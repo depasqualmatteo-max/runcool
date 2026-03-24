@@ -34,7 +34,8 @@
       "description": "Corri birresponsabilmente 🐷",
       "themeColor": "#FFD700",
       "backgroundColor": "#111111",
-      "lang": "it"
+      "lang": "it",
+      "display": "standalone"
     },
     "plugins": [
       "expo-router",
