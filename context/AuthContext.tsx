@@ -6,12 +6,14 @@ export interface AuthUser {
   email: string;
   username: string;
   clanId: string | null;
+  avatarUrl: string | null;
 }
 
 export interface ClanMember {
   id: string;
   username: string;
   hearts: number;
+  avatarUrl: string | null;
 }
 
 export interface Clan {
@@ -33,6 +35,7 @@ interface AuthContextValue {
   joinClan: (code: string) => Promise<void>;
   leaveClan: () => Promise<void>;
   refreshClan: () => Promise<void>;
+  updateAvatar: (url: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -89,6 +92,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         email,
         username: profile.username,
         clanId: profile.clan_id,
+        avatarUrl: profile.avatar_url ?? null,
       };
       setUser(authUser);
 
@@ -113,7 +117,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     const { data: members } = await supabase
       .from('profiles')
-      .select('id, username, hearts')
+      .select('id, username, hearts, avatar_url')
       .eq('clan_id', clanId);
 
     setClan({
@@ -125,6 +129,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         id: m.id,
         username: m.username,
         hearts: m.hearts,
+        avatarUrl: m.avatar_url ?? null,
       })),
     });
   }
@@ -157,7 +162,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!data.session) {
         throw new Error('Controlla la tua email per confermare la registrazione');
       }
-      // Load user data manually after registration
       await loadUserData(data.user!.id, email);
     } finally {
       registering.current = false;
@@ -228,9 +232,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     if (user?.clanId) await loadClan(user.clanId);
   }
 
+  async function updateAvatar(url: string) {
+    if (!user) return;
+    setUser((prev) => prev ? { ...prev, avatarUrl: url } : prev);
+  }
+
   return (
     <AuthContext.Provider
-      value={{ user, clan, isLoading, login, register, logout, createClan, joinClan, leaveClan, refreshClan }}
+      value={{ user, clan, isLoading, login, register, logout, createClan, joinClan, leaveClan, refreshClan, updateAvatar }}
     >
       {children}
     </AuthContext.Provider>

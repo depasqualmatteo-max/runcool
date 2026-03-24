@@ -14,7 +14,7 @@ export default function LoginScreen() {
   const [loading, setLoading] = useState(false);
 
   if (isLoading) return null;
-  if (user) return <Redirect href="/(tabs)/" />;
+  if (user) return <Redirect href="/(tabs)" />;
 
   async function handleLogin() {
     if (!email.trim() || !password.trim()) {
@@ -24,7 +24,7 @@ export default function LoginScreen() {
     setLoading(true);
     try {
       await login(email.trim(), password);
-      router.replace('/(tabs)/');
+      router.replace('/(tabs)');
     } catch (e: any) {
       Alert.alert('Ops', e.message);
     } finally {

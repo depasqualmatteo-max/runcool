@@ -41,7 +41,10 @@
       "expo-router",
       "expo-updates",
       "expo-font",
-      "expo-web-browser"
+      "expo-web-browser",
+      ["expo-image-picker", {
+        "photosPermission": "RunCool usa la tua galleria per la foto profilo 🐷"
+      }]
     ],
     "updates": {
       "url": "https://u.expo.dev/730ff266-09d0-4b0a-94b0-9891663f40aa"

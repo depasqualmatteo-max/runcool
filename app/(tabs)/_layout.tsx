@@ -1,10 +1,30 @@
 import React from 'react';
 import { Tabs, Redirect } from 'expo-router';
-import { Text } from 'react-native';
+import { Text, Platform, TouchableOpacity, Image, View } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
+import { useRouter } from 'expo-router';
 
 function TabIcon({ emoji }: { emoji: string }) {
-  return <Text style={{ fontSize: 22 }}>{emoji}</Text>;
+  return <Text style={{ fontSize: Platform.OS === 'web' ? 26 : 22 }}>{emoji}</Text>;
+}
+
+function ProfileButton() {
+  const { user } = useAuth();
+  const router = useRouter();
+  return (
+    <TouchableOpacity
+      onPress={() => router.push('/profilo' as any)}
+      style={{ marginRight: 14, width: 34, height: 34, borderRadius: 17, overflow: 'hidden', borderWidth: 2, borderColor: '#FFD700' }}
+    >
+      {user?.avatarUrl ? (
+        <Image source={{ uri: user.avatarUrl }} style={{ width: 30, height: 30 }} />
+      ) : (
+        <View style={{ width: 30, height: 30, backgroundColor: '#FFD700', alignItems: 'center', justifyContent: 'center' }}>
+          <Text style={{ fontSize: 16 }}>🐷</Text>
+        </View>
+      )}
+    </TouchableOpacity>
+  );
 }
 
 export default function TabLayout() {
@@ -18,7 +38,17 @@ export default function TabLayout() {
       screenOptions={{
         tabBarActiveTintColor: '#E8445A',
         tabBarInactiveTintColor: '#aaa',
-        tabBarStyle: { backgroundColor: '#fff', borderTopColor: '#eee' },
+        tabBarStyle: {
+          backgroundColor: '#fff',
+          borderTopColor: '#eee',
+          height: Platform.OS === 'web' ? 80 : undefined,
+          paddingBottom: Platform.OS === 'web' ? 12 : undefined,
+          paddingTop: Platform.OS === 'web' ? 8 : undefined,
+        },
+        tabBarLabelStyle: {
+          fontSize: Platform.OS === 'web' ? 12 : undefined,
+          fontWeight: '600' as const,
+        },
         headerStyle: { backgroundColor: '#fff' },
         headerTitleStyle: { fontWeight: '700', color: '#1a1a1a' },
         headerShadowVisible: false,
@@ -30,6 +60,7 @@ export default function TabLayout() {
           title: 'Corri Birresponsabilmente',
           tabBarLabel: 'Home',
           tabBarIcon: () => <TabIcon emoji="🍺" />,
+          headerRight: () => <ProfileButton />,
         }}
       />
       <Tabs.Screen
@@ -62,6 +93,14 @@ export default function TabLayout() {
           title: 'Classifiche',
           tabBarLabel: 'Classifica',
           tabBarIcon: () => <TabIcon emoji="📊" />,
+        }}
+      />
+      <Tabs.Screen
+        name="chat"
+        options={{
+          title: 'Chat',
+          tabBarLabel: 'Chat',
+          tabBarIcon: () => <TabIcon emoji="💬" />,
         }}
       />
       <Tabs.Screen

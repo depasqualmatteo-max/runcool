@@ -15,7 +15,7 @@ export default function RegisterScreen() {
   const [loading, setLoading] = useState(false);
 
   if (isLoading) return null;
-  if (user) return <Redirect href="/(tabs)/" />;
+  if (user) return <Redirect href="/(tabs)" />;
 
   async function handleRegister() {
     if (!email.trim() || !username.trim() || !password.trim()) {
@@ -29,7 +29,7 @@ export default function RegisterScreen() {
     setLoading(true);
     try {
       await register(email.trim(), username.trim(), password);
-      router.replace('/(tabs)/');
+      router.replace('/(tabs)');
     } catch (e: any) {
       Alert.alert('Ops', e.message);
     } finally {
