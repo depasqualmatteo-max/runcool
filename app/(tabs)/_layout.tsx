@@ -1,12 +1,18 @@
 import React from 'react';
-import { Tabs } from 'expo-router';
+import { Tabs, Redirect } from 'expo-router';
 import { Text } from 'react-native';
+import { useAuth } from '@/context/AuthContext';
 
 function TabIcon({ emoji }: { emoji: string }) {
   return <Text style={{ fontSize: 22 }}>{emoji}</Text>;
 }
 
 export default function TabLayout() {
+  const { user, isLoading } = useAuth();
+
+  if (isLoading) return null;
+  if (!user) return <Redirect href="/(auth)/login" />;
+
   return (
     <Tabs
       screenOptions={{
@@ -21,25 +27,41 @@ export default function TabLayout() {
       <Tabs.Screen
         name="index"
         options={{
-          title: 'RunCool',
+          title: 'Corri Birresponsabilmente',
           tabBarLabel: 'Home',
-          tabBarIcon: () => <TabIcon emoji="❤️" />,
+          tabBarIcon: () => <TabIcon emoji="🍺" />,
         }}
       />
       <Tabs.Screen
         name="two"
         options={{
-          title: 'Log Drink',
-          tabBarLabel: 'Drink',
-          tabBarIcon: () => <TabIcon emoji="🍺" />,
+          title: 'Bevi, Maialino',
+          tabBarLabel: 'Bevi',
+          tabBarIcon: () => <TabIcon emoji="🐷" />,
         }}
       />
       <Tabs.Screen
         name="log-workout"
         options={{
-          title: 'Log Workout',
+          title: 'Fai Sport',
           tabBarLabel: 'Sport',
           tabBarIcon: () => <TabIcon emoji="🏃" />,
+        }}
+      />
+      <Tabs.Screen
+        name="clan"
+        options={{
+          title: 'Il Clan',
+          tabBarLabel: 'Clan',
+          tabBarIcon: () => <TabIcon emoji="🏆" />,
+        }}
+      />
+      <Tabs.Screen
+        name="classifiche"
+        options={{
+          title: 'Classifiche',
+          tabBarLabel: 'Classifica',
+          tabBarIcon: () => <TabIcon emoji="📊" />,
         }}
       />
       <Tabs.Screen

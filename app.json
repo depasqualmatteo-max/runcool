@@ -10,7 +10,7 @@
     "splash": {
       "image": "./assets/images/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#111111"
     },
     "ios": {
       "supportsTablet": true
@@ -22,18 +22,41 @@
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.matteobruno5.runcool"
     },
     "web": {
       "bundler": "metro",
-      "output": "static",
-      "favicon": "./assets/images/favicon.png"
+      "output": "single",
+      "favicon": "./assets/images/favicon.png",
+      "name": "RunCool",
+      "shortName": "RunCool",
+      "description": "Corri birresponsabilmente 🐷",
+      "themeColor": "#FFD700",
+      "backgroundColor": "#111111",
+      "lang": "it"
     },
     "plugins": [
-      "expo-router"
+      "expo-router",
+      "expo-updates",
+      "expo-font",
+      "expo-web-browser"
     ],
+    "updates": {
+      "url": "https://u.expo.dev/730ff266-09d0-4b0a-94b0-9891663f40aa"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
     "experiments": {
       "typedRoutes": true
-    }
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "730ff266-09d0-4b0a-94b0-9891663f40aa"
+      }
+    },
+    "owner": "matteobruno5"
   }
 }

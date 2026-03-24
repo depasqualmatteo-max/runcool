@@ -2,40 +2,33 @@ import React from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useApp } from '@/context/AppContext';
+import { useAuth } from '@/context/AuthContext';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
 
 const HEART_DISPLAY_MAX = 10;
 
-function HeartsRow({ hearts }: { hearts: number }) {
-  if (hearts === 0) {
-    return (
-      <View style={styles.heartsRow}>
-        <Text style={styles.heartEmpty}>🤍</Text>
-      </View>
-    );
+function ScoreRow({ score }: { score: number }) {
+  if (score === 0) {
+    return <View style={styles.heartsRow}><Text style={styles.heartEmpty}>🤍</Text></View>;
   }
-  if (hearts < 0) {
-    const count = Math.min(Math.abs(hearts), HEART_DISPLAY_MAX);
+  if (score < 0) {
+    const count = Math.min(Math.abs(score), HEART_DISPLAY_MAX);
     return (
       <View style={styles.heartsRow}>
-        {Array.from({ length: count }).map((_, i) => (
-          <Text key={i} style={styles.heartBroken}>💔</Text>
-        ))}
-        {Math.abs(hearts) > HEART_DISPLAY_MAX && (
-          <Text style={styles.heartOverflow}>+{Math.abs(hearts) - HEART_DISPLAY_MAX}</Text>
+        {Array.from({ length: count }).map((_, i) => <Text key={i} style={styles.heartBroken}>💔</Text>)}
+        {Math.abs(score) > HEART_DISPLAY_MAX && (
+          <Text style={styles.heartOverflow}>+{Math.abs(score) - HEART_DISPLAY_MAX}</Text>
         )}
       </View>
     );
   }
-  const displayCount = Math.min(hearts, HEART_DISPLAY_MAX);
+  const count = Math.min(score, HEART_DISPLAY_MAX);
   return (
     <View style={styles.heartsRow}>
-      {Array.from({ length: displayCount }).map((_, i) => (
-        <Text key={i} style={styles.heartFull}>❤️</Text>
-      ))}
-      {hearts > HEART_DISPLAY_MAX && (
-        <Text style={styles.heartOverflow}>+{hearts - HEART_DISPLAY_MAX}</Text>
+      {Array.from({ length: count }).map((_, i) => <Text key={i} style={styles.heartFull}>❤️</Text>)}
+      {score > HEART_DISPLAY_MAX && (
+        <Text style={styles.heartOverflow}>+{score - HEART_DISPLAY_MAX}</Text>
       )}
     </View>
   );
@@ -43,35 +36,67 @@ function HeartsRow({ hearts }: { hearts: number }) {
 
 export default function DashboardScreen() {
   const { state } = useApp();
+  const { user, clan } = useAuth();
   const router = useRouter();
 
   const today = format(new Date(), 'yyyy-MM-dd');
   const todayLogs = state.logs.filter((l) => l.timestamp.startsWith(today));
   const todayDrinks = todayLogs.filter((l) => l.type === 'drink');
   const todayWorkouts = todayLogs.filter((l) => l.type === 'workout');
+  const scoreColor = state.hearts > 0 ? '#E8445A' : state.hearts < 0 ? '#ff3b30' : '#aaa';
 
-  const heartColor = state.hearts > 0 ? '#E8445A' : state.hearts < 0 ? '#ff3b30' : '#aaa';
+  const clanScore = clan
+    ? clan.members.reduce((sum, m) => sum + m.hearts, 0)
+    : null;
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      {/* Hero score */}
       <View style={styles.heroCard}>
-        <Text style={styles.heartsLabel}>I tuoi cuori</Text>
-        <Text style={[styles.heartsNumber, { color: heartColor }]}>
+        <Text style={styles.hello}>Ciao, {user?.username} 🐷</Text>
+        <Text style={styles.heartsLabel}>La tua birresponsabilità</Text>
+        <Text style={[styles.heartsNumber, { color: scoreColor }]}>
           {state.hearts > 0 ? `+${state.hearts}` : state.hearts}
         </Text>
-        <HeartsRow hearts={state.hearts} />
-        {state.hearts < 0 && (
-          <Text style={styles.debtLabel}>Hai un debito da ripagare 😅</Text>
-        )}
-        {state.hearts === 0 && (
-          <Text style={styles.debtLabel}>Parti da zero — fai sport!</Text>
-        )}
+        <ScoreRow score={state.hearts} />
+        {state.hearts < 0 && <Text style={styles.debtLabel}>Hai un debito da ripagare — corri! 😅</Text>}
+        {state.hearts === 0 && <Text style={styles.debtLabel}>Parti da zero — fai sport!</Text>}
+        {state.hearts > 0 && <Text style={styles.debtLabel}>Sei virtualmente sobrio 💪</Text>}
       </View>
 
+      {/* Clan score */}
+      {clan && (
+        <>
+          <Text style={styles.sectionTitle}>Il tuo clan</Text>
+          <View style={styles.clanCard}>
+            <View style={styles.clanHeader}>
+              <Text style={styles.clanName}>🏆 {clan.name}</Text>
+              <Text style={styles.clanCode}>#{clan.code}</Text>
+            </View>
+            <Text style={styles.clanScoreLabel}>Punteggio clan</Text>
+            <Text style={[styles.clanScore, { color: clanScore! >= 0 ? '#E8445A' : '#ff3b30' }]}>
+              {clanScore! > 0 ? `+${clanScore}` : clanScore}
+            </Text>
+            <View style={styles.membersRow}>
+              {clan.members.map((m) => (
+                <View key={m.id} style={styles.memberBadge}>
+                  <Text style={styles.memberEmoji}>{m.id === user?.id ? '🐷' : '👤'}</Text>
+                  <Text style={styles.memberName}>{m.username}</Text>
+                  <Text style={[styles.memberScore, { color: m.hearts >= 0 ? '#E8445A' : '#ff3b30' }]}>
+                    {m.hearts > 0 ? `+${m.hearts}` : m.hearts}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        </>
+      )}
+
+      {/* Today stats */}
       <Text style={styles.sectionTitle}>Oggi</Text>
       <View style={styles.statsRow}>
         <View style={[styles.statCard, { borderColor: '#FF9800' }]}>
-          <Text style={styles.statIcon}>🍺</Text>
+          <Text style={styles.statIcon}>🐷</Text>
           <Text style={styles.statValue}>{todayDrinks.length}</Text>
           <Text style={styles.statLabel}>Drink</Text>
           {todayDrinks.length > 0 && (
@@ -83,7 +108,7 @@ export default function DashboardScreen() {
         <View style={[styles.statCard, { borderColor: '#2196F3' }]}>
           <Text style={styles.statIcon}>🏃</Text>
           <Text style={styles.statValue}>{todayWorkouts.length}</Text>
-          <Text style={styles.statLabel}>Workout</Text>
+          <Text style={styles.statLabel}>Sport</Text>
           {todayWorkouts.length > 0 && (
             <Text style={styles.statSub}>
               +{todayWorkouts.reduce((s, l) => s + (l.type === 'workout' ? l.heartsGained : 0), 0)} ❤️
@@ -92,23 +117,25 @@ export default function DashboardScreen() {
         </View>
       </View>
 
+      {/* CTA */}
       <View style={styles.ctaRow}>
         <TouchableOpacity
           style={[styles.ctaButton, { backgroundColor: '#FF9800' }]}
           onPress={() => router.push('/(tabs)/two')}
         >
-          <Text style={styles.ctaIcon}>🍺</Text>
-          <Text style={styles.ctaText}>Log Drink</Text>
+          <Text style={styles.ctaIcon}>🐷</Text>
+          <Text style={styles.ctaText}>Hai bevuto?</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.ctaButton, { backgroundColor: '#2196F3' }]}
           onPress={() => router.push('/(tabs)/log-workout')}
         >
           <Text style={styles.ctaIcon}>🏃</Text>
-          <Text style={styles.ctaText}>Log Sport</Text>
+          <Text style={styles.ctaText}>Hai corso?</Text>
         </TouchableOpacity>
       </View>
 
+      {/* Recent */}
       {state.logs.length > 0 && (
         <>
           <Text style={styles.sectionTitle}>Ultimi log</Text>
@@ -116,10 +143,12 @@ export default function DashboardScreen() {
             const isWorkout = log.type === 'workout';
             return (
               <View key={log.id} style={styles.recentCard}>
-                <Text style={styles.recentIcon}>{isWorkout ? '🏃' : '🍺'}</Text>
+                <Text style={styles.recentIcon}>{isWorkout ? '🏃' : '🐷'}</Text>
                 <View style={{ flex: 1 }}>
                   <Text style={styles.recentName}>
-                    {isWorkout ? log.workoutName : `${log.drinkName}${log.type === 'drink' && log.quantity > 1 ? ` x${log.quantity}` : ''}`}
+                    {isWorkout
+                      ? log.workoutName
+                      : `${log.drinkName}${log.quantity > 1 ? ` x${log.quantity}` : ''}`}
                   </Text>
                   <Text style={styles.recentTime}>
                     {format(new Date(log.timestamp), 'HH:mm', { locale: it })}
@@ -147,7 +176,8 @@ const styles = StyleSheet.create({
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.07, shadowRadius: 8, elevation: 3,
   },
-  heartsLabel: { fontSize: 14, color: '#aaa', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 },
+  hello: { fontSize: 14, color: '#aaa', marginBottom: 8 },
+  heartsLabel: { fontSize: 13, color: '#aaa', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 },
   heartsNumber: { fontSize: 72, fontWeight: '800', lineHeight: 80 },
   heartsRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', marginTop: 8, gap: 2 },
   heartFull: { fontSize: 24 },
@@ -156,7 +186,30 @@ const styles = StyleSheet.create({
   heartOverflow: { fontSize: 18, fontWeight: '700', color: '#E8445A', alignSelf: 'center', marginLeft: 4 },
   debtLabel: { fontSize: 13, color: '#aaa', marginTop: 8 },
 
-  sectionTitle: { fontSize: 13, fontWeight: '700', color: '#aaa', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10 },
+  sectionTitle: {
+    fontSize: 13, fontWeight: '700', color: '#aaa',
+    letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10,
+  },
+
+  clanCard: {
+    backgroundColor: '#fff', borderRadius: 16, padding: 20, marginBottom: 24,
+    borderWidth: 2, borderColor: '#FFD700',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06, shadowRadius: 6, elevation: 2,
+  },
+  clanHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  clanName: { fontSize: 17, fontWeight: '800', color: '#1a1a1a' },
+  clanCode: { fontSize: 12, color: '#aaa', fontWeight: '600' },
+  clanScoreLabel: { fontSize: 11, color: '#aaa', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2 },
+  clanScore: { fontSize: 40, fontWeight: '800', marginBottom: 12 },
+  membersRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
+  memberBadge: {
+    backgroundColor: '#f7f7f7', borderRadius: 10, padding: 10,
+    alignItems: 'center', minWidth: 80,
+  },
+  memberEmoji: { fontSize: 20, marginBottom: 2 },
+  memberName: { fontSize: 11, color: '#555', fontWeight: '600', marginBottom: 2 },
+  memberScore: { fontSize: 14, fontWeight: '800' },
 
   statsRow: { flexDirection: 'row', gap: 12, marginBottom: 24 },
   statCard: {

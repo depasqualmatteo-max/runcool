@@ -3,9 +3,9 @@ import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
-import 'react-native-reanimated';
 
 import { useColorScheme } from '@/components/useColorScheme';
+import { AuthProvider } from '@/context/AuthContext';
 import { AppProvider } from '@/context/AppContext';
 
 export { ErrorBoundary } from 'expo-router';
@@ -29,12 +29,12 @@ export default function RootLayout() {
     if (loaded) SplashScreen.hideAsync();
   }, [loaded]);
 
-  if (!loaded) return null;
-
   return (
-    <AppProvider>
-      <RootLayoutNav />
-    </AppProvider>
+    <AuthProvider>
+      <AppProvider>
+        {loaded ? <RootLayoutNav /> : null}
+      </AppProvider>
+    </AuthProvider>
   );
 }
 
@@ -44,6 +44,7 @@ function RootLayoutNav() {
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
+        <Stack.Screen name="(auth)" options={{ headerShown: false, animation: 'fade' }} />
       </Stack>
     </ThemeProvider>
   );

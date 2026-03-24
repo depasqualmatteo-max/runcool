@@ -1,18 +1,12 @@
 import { DrinkDefinition, DrinkId } from '@/types';
 
 export const DRINKS: DrinkDefinition[] = [
-  { id: 'beer_pint',   name: 'Birra (330ml)',  calories: 150, icon: '🍺' },
-  { id: 'beer_large',  name: 'Birra (500ml)',  calories: 215, icon: '🍺' },
-  { id: 'wine_glass',  name: 'Vino (150ml)',   calories: 120, icon: '🍷' },
-  { id: 'wine_large',  name: 'Vino (250ml)',   calories: 200, icon: '🍷' },
-  { id: 'prosecco',    name: 'Prosecco',       calories: 105, icon: '🥂' },
-  { id: 'spritz',      name: 'Spritz',         calories: 130, icon: '🍊' },
-  { id: 'cocktail',    name: 'Cocktail',       calories: 180, icon: '🍹' },
-  { id: 'shot',        name: 'Shot (40ml)',    calories: 97,  icon: '🥃' },
-  { id: 'whisky',      name: 'Whisky (40ml)',  calories: 105, icon: '🥃' },
-  { id: 'gin_tonic',   name: 'Gin Tonic',      calories: 160, icon: '🍸' },
-  { id: 'mojito',      name: 'Mojito',         calories: 200, icon: '🍹' },
-  { id: 'amaro',       name: 'Amaro (40ml)',   calories: 90,  icon: '🥃' },
+  { id: 'birra_piccola',  name: 'Birra Piccola',     calories: 150, icon: '🍺' },
+  { id: 'birra_media',    name: 'Birra Media',        calories: 215, icon: '🍺' },
+  { id: 'calice_vino',    name: 'Calice di Vino',     calories: 120, icon: '🍷' },
+  { id: 'cocktail',       name: 'Cocktail',           calories: 180, icon: '🍹' },
+  { id: 'amaro',          name: 'Amaro',              calories: 90,  icon: '🥃' },
+  { id: 'bottiglia_vino', name: 'Bottiglia di Vino',  calories: 600, icon: '🍾', hasQuantityPrompt: true },
 ];
 
 export const DRINK_MAP: Record<DrinkId, DrinkDefinition> = Object.fromEntries(

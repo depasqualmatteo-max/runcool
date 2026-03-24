@@ -1,24 +1,42 @@
 export type DrinkId =
-  | 'beer_pint' | 'beer_large' | 'wine_glass' | 'wine_large'
-  | 'prosecco' | 'spritz' | 'cocktail' | 'shot' | 'whisky'
-  | 'gin_tonic' | 'mojito' | 'amaro';
+  | 'birra_piccola'
+  | 'birra_media'
+  | 'calice_vino'
+  | 'cocktail'
+  | 'amaro'
+  | 'bottiglia_vino';
 
 export type WorkoutId =
-  | 'corsa' | 'palestra' | 'ciclismo' | 'nuoto' | 'camminata'
-  | 'yoga' | 'hiit' | 'calcio' | 'basket' | 'tennis';
+  | 'corsa'
+  | 'camminata'
+  | 'hiit'
+  | 'palestra'
+  | 'tennis'
+  | 'padel'
+  | 'calcetto'
+  | 'pilates'
+  | 'nuoto'
+  | 'ciclismo'
+  | 'boxe'
+  | 'danza';
+
+export type WorkoutInputType = 'duration' | 'km' | 'km_elevation';
 
 export interface DrinkDefinition {
   id: DrinkId;
   name: string;
   calories: number;
   icon: string;
+  hasQuantityPrompt?: boolean;
 }
 
 export interface WorkoutDefinition {
   id: WorkoutId;
   name: string;
-  calPerMin: number;
   icon: string;
+  inputType: WorkoutInputType;
+  calPerMin?: number;
+  calPerKm?: number;
 }
 
 export interface DrinkLog {
@@ -37,7 +55,9 @@ export interface WorkoutLog {
   type: 'workout';
   workoutId: WorkoutId;
   workoutName: string;
-  durationMinutes: number;
+  durationMinutes?: number;
+  km?: number;
+  elevationMeters?: number;
   calories: number;
   heartsGained: number;
   timestamp: string;
@@ -45,13 +65,28 @@ export interface WorkoutLog {
 
 export type LogEntry = DrinkLog | WorkoutLog;
 
+export interface User {
+  id: string;
+  email: string;
+  username: string;
+  clanId: string | null;
+}
+
+export interface ClanMember {
+  id: string;
+  username: string;
+  hearts: number;
+}
+
+export interface Clan {
+  id: string;
+  name: string;
+  code: string;
+  ownerId: string;
+  members: ClanMember[];
+}
+
 export interface AppState {
   hearts: number;
   logs: LogEntry[];
 }
-
-export type AppAction =
-  | { type: 'HYDRATE'; payload: AppState }
-  | { type: 'LOG_DRINK'; payload: { drinkId: DrinkId; quantity: number } }
-  | { type: 'LOG_WORKOUT'; payload: { workoutId: WorkoutId; durationMinutes: number } }
-  | { type: 'DELETE_LOG'; payload: { id: string } };

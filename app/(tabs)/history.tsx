@@ -7,19 +7,27 @@ import { it } from 'date-fns/locale';
 
 function LogCard({ log, onDelete }: { log: LogEntry; onDelete: () => void }) {
   const isWorkout = log.type === 'workout';
-  const icon = isWorkout ? log.workoutName : log.drinkName;
-  const emoji = isWorkout ? '🏃' : '🍺';
+  const name = isWorkout ? log.workoutName : log.drinkName;
+  const emoji = isWorkout ? '🏃' : '🐷';
   const delta = isWorkout ? `+${log.heartsGained} ❤️` : `-${log.heartsLost} ❤️`;
   const deltaColor = isWorkout ? '#2196F3' : '#E8445A';
-  const subtitle = isWorkout
-    ? `${log.durationMinutes} min — ${log.calories} kcal bruciate`
-    : `${log.type === 'drink' && log.quantity > 1 ? `x${log.quantity} — ` : ''}${log.calories} kcal`;
+
+  let subtitle = '';
+  if (log.type === 'drink') {
+    subtitle = `${log.quantity > 1 ? `x${log.quantity} — ` : ''}${log.calories} kcal`;
+  } else {
+    if (log.km !== undefined) {
+      subtitle = `${log.km} km${log.elevationMeters ? ` +${log.elevationMeters}m` : ''} — ${log.calories} kcal`;
+    } else {
+      subtitle = `${log.durationMinutes} min — ${log.calories} kcal`;
+    }
+  }
 
   return (
     <View style={styles.card}>
       <Text style={styles.cardEmoji}>{emoji}</Text>
       <View style={{ flex: 1 }}>
-        <Text style={styles.cardName}>{icon}</Text>
+        <Text style={styles.cardName}>{name}</Text>
         <Text style={styles.cardSub}>{subtitle}</Text>
         <Text style={styles.cardTime}>
           {format(new Date(log.timestamp), "d MMM 'alle' HH:mm", { locale: it })}
@@ -36,14 +44,14 @@ function LogCard({ log, onDelete }: { log: LogEntry; onDelete: () => void }) {
 }
 
 export default function HistoryScreen() {
-  const { state, dispatch } = useApp();
+  const { state, deleteLog } = useApp();
 
   function confirmDelete(id: string) {
-    Alert.alert('Elimina log', 'Sei sicuro? Il delta cuori verrà ripristinato.', [
+    Alert.alert('Elimina log', 'Sei sicuro? La birresponsabilità verrà ripristinata.', [
       { text: 'Annulla', style: 'cancel' },
       {
         text: 'Elimina', style: 'destructive',
-        onPress: () => dispatch({ type: 'DELETE_LOG', payload: { id } }),
+        onPress: () => deleteLog(id),
       },
     ]);
   }
@@ -53,7 +61,7 @@ export default function HistoryScreen() {
       <View style={styles.empty}>
         <Text style={styles.emptyIcon}>📋</Text>
         <Text style={styles.emptyTitle}>Nessun log ancora</Text>
-        <Text style={styles.emptySub}>Inizia a loggare drink e sport!</Text>
+        <Text style={styles.emptySub}>Inizia a loggare drink e sport, maialino!</Text>
       </View>
     );
   }

@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>RunCool Icon v2</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #1a1a1a;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 48px;
+      gap: 40px;
+      font-family: -apple-system, sans-serif;
+    }
+    h1 { color: #FFD700; font-size: 18px; letter-spacing: 3px; text-transform: uppercase; }
+    .row { display: flex; gap: 40px; align-items: flex-end; flex-wrap: wrap; justify-content: center; }
+    .item { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    .label { color: #666; font-size: 12px; letter-spacing: 1px; }
+    .i200 { width: 200px; height: 200px; border-radius: 45px; overflow: hidden; box-shadow: 0 8px 32px rgba(0,0,0,.6); }
+    .i76  { width:  76px; height:  76px; border-radius: 17px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,.5); }
+    .i40  { width:  40px; height:  40px; border-radius:  9px; overflow: hidden; }
+    svg { display: block; width: 100%; height: 100%; }
+  </style>
+</head>
+<body>
+<h1>RunCool — icona v2</h1>
+
+<div class="row">
+
+  <!-- ═══════════════════  VARIANTE A  (sfondo nero)  ══════════════════════ -->
+  <div class="item">
+    <div class="i200">
+      <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+        <rect width="1024" height="1024" fill="#111"/>
+
+        <!-- ── CORRIDORE ── -->
+        <!-- testa -->
+        <circle cx="295" cy="195" r="70" fill="#FFD700"/>
+        <!-- collo -->
+        <rect x="274" y="258" width="42" height="44" rx="14" fill="#FFD700"/>
+        <!-- torso (ellisse inclinata in avanti) -->
+        <ellipse cx="280" cy="408" rx="52" ry="105" fill="#FFD700" transform="rotate(-9 280 408)"/>
+        <!-- bacino -->
+        <ellipse cx="272" cy="512" rx="44" ry="26" fill="#FFD700" transform="rotate(-5 272 512)"/>
+
+        <!-- braccio DX alzato (spalla→gomito→mano con boccale) -->
+        <line x1="318" y1="340" x2="490" y2="252" stroke="#FFD700" stroke-width="42" stroke-linecap="round"/>
+        <circle cx="490" cy="252" r="21" fill="#FFD700"/>
+        <line x1="490" y1="252" x2="610" y2="215" stroke="#FFD700" stroke-width="34" stroke-linecap="round"/>
+
+        <!-- braccio SX swing indietro -->
+        <line x1="245" y1="345" x2="120" y2="440" stroke="#FFD700" stroke-width="42" stroke-linecap="round"/>
+        <circle cx="120" cy="440" r="21" fill="#FFD700"/>
+        <line x1="120" y1="440" x2="90" y2="528" stroke="#FFD700" stroke-width="34" stroke-linecap="round"/>
+
+        <!-- gamba DX avanti (coscia→ginocchio→polpaccio→piede) -->
+        <line x1="290" y1="535" x2="378" y2="672" stroke="#FFD700" stroke-width="48" stroke-linecap="round"/>
+        <circle cx="378" cy="672" r="24" fill="#FFD700"/>
+        <line x1="378" y1="672" x2="462" y2="790" stroke="#FFD700" stroke-width="40" stroke-linecap="round"/>
+        <ellipse cx="476" cy="803" rx="36" ry="17" fill="#FFD700" transform="rotate(-15 476 803)"/>
+
+        <!-- gamba SX dietro (coscia→ginocchio→polpaccio→piede) -->
+        <line x1="255" y1="525" x2="168" y2="662" stroke="#FFD700" stroke-width="48" stroke-linecap="round"/>
+        <circle cx="168" cy="662" r="24" fill="#FFD700"/>
+        <line x1="168" y1="662" x2="148" y2="800" stroke="#FFD700" stroke-width="40" stroke-linecap="round"/>
+        <ellipse cx="140" cy="812" rx="32" ry="15" fill="#FFD700" transform="rotate(10 140 812)"/>
+
+        <!-- linea terra -->
+        <rect x="80" y="835" width="860" height="10" rx="5" fill="#FFD700" opacity="0.25"/>
+
+        <!-- ── BOCCALE (stein) ── -->
+        <!-- birra dentro (fill semitrasparente) -->
+        <path d="M620,222 L800,222 L793,455 L627,455 Z" fill="#FFD700" opacity="0.28"/>
+
+        <!-- corpo cilindrico del boccale -->
+        <path d="M615,198 L805,198 L797,462 L623,462 Z"
+              fill="none" stroke="#FFD700" stroke-width="28" stroke-linejoin="round"/>
+        <!-- base più larga -->
+        <path d="M608,462 L623,462 L623,482 L797,482 L797,462 L812,462"
+              fill="none" stroke="#FFD700" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+        <!-- anelli orizzontali (texture) -->
+        <line x1="623" y1="290" x2="796" y2="290" stroke="#FFD700" stroke-width="9" stroke-linecap="round" opacity="0.55"/>
+        <line x1="625" y1="370" x2="794" y2="370" stroke="#FFD700" stroke-width="9" stroke-linecap="round" opacity="0.55"/>
+
+        <!-- manico spesso (filled path) -->
+        <path d="M797,238 Q910,238 910,330 Q910,422 797,422 L797,393 Q878,393 878,330 Q878,268 797,268 Z"
+              fill="#FFD700"/>
+
+        <!-- schiuma che trabocca -->
+        <circle cx="645" cy="188" r="30" fill="#FFD700"/>
+        <circle cx="673" cy="172" r="38" fill="#FFD700"/>
+        <circle cx="708" cy="163" r="44" fill="#FFD700"/>
+        <circle cx="745" cy="169" r="38" fill="#FFD700"/>
+        <circle cx="775" cy="182" r="28" fill="#FFD700"/>
+        <!-- secondo strato schiuma -->
+        <circle cx="660" cy="152" r="26" fill="#FFD700"/>
+        <circle cx="695" cy="138" r="32" fill="#FFD700"/>
+        <circle cx="728" cy="142" r="28" fill="#FFD700"/>
+        <!-- piccole bolle -->
+        <circle cx="638" cy="340" r="7"  fill="#FFD700" opacity="0.4"/>
+        <circle cx="658" cy="310" r="5"  fill="#FFD700" opacity="0.4"/>
+        <circle cx="772" cy="295" r="6"  fill="#FFD700" opacity="0.4"/>
+        <circle cx="755" cy="335" r="8"  fill="#FFD700" opacity="0.4"/>
+      </svg>
+    </div>
+    <span class="label">A — nero</span>
+  </div>
+
+  <!-- ═══════════════════  VARIANTE B  (sfondo giallo)  ════════════════════ -->
+  <div class="item">
+    <div class="i200">
+      <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+        <rect width="1024" height="1024" fill="#FFD700"/>
+
+        <!-- ── CORRIDORE (nero su giallo) ── -->
+        <circle cx="295" cy="195" r="70" fill="#111"/>
+        <rect x="274" y="258" width="42" height="44" rx="14" fill="#111"/>
+        <ellipse cx="280" cy="408" rx="52" ry="105" fill="#111" transform="rotate(-9 280 408)"/>
+        <ellipse cx="272" cy="512" rx="44" ry="26" fill="#111" transform="rotate(-5 272 512)"/>
+        <line x1="318" y1="340" x2="490" y2="252" stroke="#111" stroke-width="42" stroke-linecap="round"/>
+        <circle cx="490" cy="252" r="21" fill="#111"/>
+        <line x1="490" y1="252" x2="610" y2="215" stroke="#111" stroke-width="34" stroke-linecap="round"/>
+        <line x1="245" y1="345" x2="120" y2="440" stroke="#111" stroke-width="42" stroke-linecap="round"/>
+        <circle cx="120" cy="440" r="21" fill="#111"/>
+        <line x1="120" y1="440" x2="90" y2="528" stroke="#111" stroke-width="34" stroke-linecap="round"/>
+        <line x1="290" y1="535" x2="378" y2="672" stroke="#111" stroke-width="48" stroke-linecap="round"/>
+        <circle cx="378" cy="672" r="24" fill="#111"/>
+        <line x1="378" y1="672" x2="462" y2="790" stroke="#111" stroke-width="40" stroke-linecap="round"/>
+        <ellipse cx="476" cy="803" rx="36" ry="17" fill="#111" transform="rotate(-15 476 803)"/>
+        <line x1="255" y1="525" x2="168" y2="662" stroke="#111" stroke-width="48" stroke-linecap="round"/>
+        <circle cx="168" cy="662" r="24" fill="#111"/>
+        <line x1="168" y1="662" x2="148" y2="800" stroke="#111" stroke-width="40" stroke-linecap="round"/>
+        <ellipse cx="140" cy="812" rx="32" ry="15" fill="#111" transform="rotate(10 140 812)"/>
+
+        <!-- ── BOCCALE (nero su giallo) ── -->
+        <path d="M615,198 L805,198 L797,462 L623,462 Z" fill="none" stroke="#111" stroke-width="28" stroke-linejoin="round"/>
+        <path d="M608,462 L623,462 L623,482 L797,482 L797,462 L812,462" fill="none" stroke="#111" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+        <line x1="623" y1="290" x2="796" y2="290" stroke="#111" stroke-width="9" stroke-linecap="round" opacity="0.5"/>
+        <line x1="625" y1="370" x2="794" y2="370" stroke="#111" stroke-width="9" stroke-linecap="round" opacity="0.5"/>
+        <path d="M797,238 Q910,238 910,330 Q910,422 797,422 L797,393 Q878,393 878,330 Q878,268 797,268 Z" fill="#111"/>
+        <!-- schiuma (giallo su nero su giallo = buchi) -->
+        <circle cx="645" cy="188" r="30" fill="#FFD700"/>
+        <circle cx="673" cy="172" r="38" fill="#FFD700"/>
+        <circle cx="708" cy="163" r="44" fill="#FFD700"/>
+        <circle cx="745" cy="169" r="38" fill="#FFD700"/>
+        <circle cx="775" cy="182" r="28" fill="#FFD700"/>
+        <circle cx="660" cy="152" r="26" fill="#FFD700"/>
+        <circle cx="695" cy="138" r="32" fill="#FFD700"/>
+        <circle cx="728" cy="142" r="28" fill="#FFD700"/>
+        <!-- riempio il top del boccale di nero per far sembrare schiuma sopra -->
+        <rect x="615" y="198" width="190" height="28" fill="#111"/>
+      </svg>
+    </div>
+    <span class="label">B — giallo</span>
+  </div>
+
+</div>
+
+<!-- dimensioni reali -->
+<div class="row" style="margin-top:8px;">
+  <div class="item">
+    <div class="i76">
+      <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+        <rect width="1024" height="1024" fill="#111"/>
+        <circle cx="295" cy="195" r="70" fill="#FFD700"/>
+        <rect x="274" y="258" width="42" height="44" rx="14" fill="#FFD700"/>
+        <ellipse cx="280" cy="408" rx="52" ry="105" fill="#FFD700" transform="rotate(-9 280 408)"/>
+        <ellipse cx="272" cy="512" rx="44" ry="26" fill="#FFD700" transform="rotate(-5 272 512)"/>
+        <line x1="318" y1="340" x2="490" y2="252" stroke="#FFD700" stroke-width="42" stroke-linecap="round"/>
+        <circle cx="490" cy="252" r="21" fill="#FFD700"/>
+        <line x1="490" y1="252" x2="610" y2="215" stroke="#FFD700" stroke-width="34" stroke-linecap="round"/>
+        <line x1="245" y1="345" x2="120" y2="440" stroke="#FFD700" stroke-width="42" stroke-linecap="round"/>
+        <circle cx="120" cy="440" r="21" fill="#FFD700"/>
+        <line x1="120" y1="440" x2="90" y2="528" stroke="#FFD700" stroke-width="34" stroke-linecap="round"/>
+        <line x1="290" y1="535" x2="378" y2="672" stroke="#FFD700" stroke-width="48" stroke-linecap="round"/>
+        <circle cx="378" cy="672" r="24" fill="#FFD700"/>
+        <line x1="378" y1="672" x2="462" y2="790" stroke="#FFD700" stroke-width="40" stroke-linecap="round"/>
+        <ellipse cx="476" cy="803" rx="36" ry="17" fill="#FFD700" transform="rotate(-15 476 803)"/>
+        <line x1="255" y1="525" x2="168" y2="662" stroke="#FFD700" stroke-width="48" stroke-linecap="round"/>
+        <circle cx="168" cy="662" r="24" fill="#FFD700"/>
+        <line x1="168" y1="662" x2="148" y2="800" stroke="#FFD700" stroke-width="40" stroke-linecap="round"/>
+        <ellipse cx="140" cy="812" rx="32" ry="15" fill="#FFD700" transform="rotate(10 140 812)"/>
+        <path d="M620,222 L800,222 L793,455 L627,455 Z" fill="#FFD700" opacity="0.28"/>
+        <path d="M615,198 L805,198 L797,462 L623,462 Z" fill="none" stroke="#FFD700" stroke-width="28" stroke-linejoin="round"/>
+        <path d="M608,462 L623,462 L623,482 L797,482 L797,462 L812,462" fill="none" stroke="#FFD700" stroke-width="22" stroke-linecap="round" stroke-linejoin="round"/>
+        <line x1="623" y1="290" x2="796" y2="290" stroke="#FFD700" stroke-width="9" stroke-linecap="round" opacity="0.55"/>
+        <line x1="625" y1="370" x2="794" y2="370" stroke="#FFD700" stroke-width="9" stroke-linecap="round" opacity="0.55"/>
+        <path d="M797,238 Q910,238 910,330 Q910,422 797,422 L797,393 Q878,393 878,330 Q878,268 797,268 Z" fill="#FFD700"/>
+        <circle cx="645" cy="188" r="30" fill="#FFD700"/>
+        <circle cx="673" cy="172" r="38" fill="#FFD700"/>
+        <circle cx="708" cy="163" r="44" fill="#FFD700"/>
+        <circle cx="745" cy="169" r="38" fill="#FFD700"/>
+        <circle cx="775" cy="182" r="28" fill="#FFD700"/>
+        <circle cx="660" cy="152" r="26" fill="#FFD700"/>
+        <circle cx="695" cy="138" r="32" fill="#FFD700"/>
+        <circle cx="728" cy="142" r="28" fill="#FFD700"/>
+      </svg>
+    </div>
+    <span class="label">76px (home)</span>
+  </div>
+  <div class="item">
+    <div class="i40">
+      <svg viewBox="0 0 1024 1024" xmlns="http://www.w3.org/2000/svg">
+        <rect width="1024" height="1024" fill="#111"/>
+        <circle cx="295" cy="195" r="70" fill="#FFD700"/>
+        <ellipse cx="280" cy="408" rx="52" ry="105" fill="#FFD700" transform="rotate(-9 280 408)"/>
+        <line x1="318" y1="340" x2="610" y2="215" stroke="#FFD700" stroke-width="42" stroke-linecap="round"/>
+        <line x1="245" y1="345" x2="90" y2="528" stroke="#FFD700" stroke-width="42" stroke-linecap="round"/>
+        <line x1="290" y1="535" x2="462" y2="790" stroke="#FFD700" stroke-width="48" stroke-linecap="round"/>
+        <line x1="255" y1="525" x2="148" y2="800" stroke="#FFD700" stroke-width="48" stroke-linecap="round"/>
+        <path d="M615,198 L805,198 L797,462 L623,462 Z" fill="none" stroke="#FFD700" stroke-width="28" stroke-linejoin="round"/>
+        <path d="M797,238 Q910,238 910,330 Q910,422 797,422 L797,393 Q878,393 878,330 Q878,268 797,268 Z" fill="#FFD700"/>
+        <circle cx="708" cy="138" r="55" fill="#FFD700"/>
+      </svg>
+    </div>
+    <span class="label">40px</span>
+  </div>
+</div>
+
+<p style="color:#444; font-size:12px;">Dimmi quale variante (A/B) o cosa vuoi cambiare</p>
+</body>
+</html>
