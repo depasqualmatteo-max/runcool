@@ -61,11 +61,16 @@ export default function LogWorkoutScreen() {
         elevationMeters: selected.inputType === 'km_elevation' ? e : undefined,
       });
       if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      Alert.alert(
-        'Sport loggato 💪',
-        `+${previewHearts} ❤️  (${previewCalories} kcal bruciate)\nBirresponsabilità: ${state.hearts} → ${state.hearts + previewHearts}`,
-        [{ text: 'Forza!', onPress: () => router.push('/') }]
-      );
+      if (Platform.OS === 'web') {
+        alert(`Sport loggato 💪\n+${previewHearts} ❤️ (${previewCalories} kcal bruciate)`);
+        router.push('/');
+      } else {
+        Alert.alert(
+          'Sport loggato 💪',
+          `+${previewHearts} ❤️  (${previewCalories} kcal bruciate)\nBirresponsabilità: ${state.hearts} → ${state.hearts + previewHearts}`,
+          [{ text: 'Forza!', onPress: () => router.push('/') }]
+        );
+      }
     } catch (e: any) {
       Alert.alert('Errore', e.message);
     } finally {

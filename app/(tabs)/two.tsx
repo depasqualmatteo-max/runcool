@@ -49,11 +49,16 @@ export default function LogDrinkScreen() {
     try {
       await logDrink(selectedDrink, quantity);
       if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-      Alert.alert(
-        'Trincato loggato 🐷',
-        `-${previewHearts} ❤️  (${previewCalories} kcal)\nBirresponsabilità: ${state.hearts} → ${state.hearts - previewHearts}`,
-        [{ text: 'Vergogna!', onPress: () => router.push('/') }]
-      );
+      if (Platform.OS === 'web') {
+        alert(`Trincato loggato 🐷\n-${previewHearts} ❤️ (${previewCalories} kcal)`);
+        router.push('/');
+      } else {
+        Alert.alert(
+          'Trincato loggato 🐷',
+          `-${previewHearts} ❤️  (${previewCalories} kcal)\nBirresponsabilità: ${state.hearts} → ${state.hearts - previewHearts}`,
+          [{ text: 'Vergogna!', onPress: () => router.push('/') }]
+        );
+      }
     } catch (e: any) {
       Alert.alert('Errore', e.message);
     } finally {
