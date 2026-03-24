@@ -1,0 +1,24 @@
+{
+  "name": "RunCool",
+  "short_name": "RunCool",
+  "description": "Corri birresponsabilmente 🐷",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#111111",
+  "theme_color": "#FFD700",
+  "lang": "it",
+  "icons": [
+    {
+      "src": "/assets/images/favicon.png",
+      "sizes": "64x64",
+      "type": "image/png"
+    },
+    {
+      "src": "/assets/images/icon.png",
+      "sizes": "1024x1024",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
