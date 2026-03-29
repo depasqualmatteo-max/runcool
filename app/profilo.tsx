@@ -6,12 +6,121 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
+import { useApp } from '@/context/AppContext';
 import { useRouter } from 'expo-router';
+
+// ─── Badge system ────────────────────────────────────────────────────────────
+
+interface Badge {
+  id: string;
+  emoji: string;
+  name: string;
+  desc: string;
+  earned: boolean;
+}
+
+function computeBadges(logs: any[], hearts: number): Badge[] {
+  const drinks = logs.filter(l => l.type === 'drink');
+  const workouts = logs.filter(l => l.type === 'workout');
+  const totalKm = workouts.reduce((s, l) => s + (l.km ?? 0), 0);
+  const totalElev = workouts.reduce((s, l) => s + (l.elevationMeters ?? 0), 0);
+
+  // drink in un singolo giorno
+  const drinksByDay: Record<string, number> = {};
+  drinks.forEach(d => {
+    const day = d.timestamp.slice(0, 10);
+    drinksByDay[day] = (drinksByDay[day] ?? 0) + 1;
+  });
+  const maxDrinksInDay = Math.max(0, ...Object.values(drinksByDay));
+
+  // sport in una settimana
+  const now = new Date();
+  const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+  const workoutsThisWeek = workouts.filter(w => new Date(w.timestamp) >= weekAgo).length;
+
+  return [
+    {
+      id: 'first_drink',
+      emoji: '🍺',
+      name: 'Prima Birra',
+      desc: 'Hai loggato il tuo primo drink',
+      earned: drinks.length >= 1,
+    },
+    {
+      id: 'first_workout',
+      emoji: '👟',
+      name: 'Primo Passo',
+      desc: 'Hai loggato il tuo primo allenamento',
+      earned: workouts.length >= 1,
+    },
+    {
+      id: 'maialino_doc',
+      emoji: '🐷',
+      name: 'Maialino DOC',
+      desc: '20 drink loggati in totale',
+      earned: drinks.length >= 20,
+    },
+    {
+      id: 'atleta',
+      emoji: '💪',
+      name: 'Atleta',
+      desc: '20 sport loggati in totale',
+      earned: workouts.length >= 20,
+    },
+    {
+      id: 'party_animal',
+      emoji: '🍾',
+      name: 'Party Animal',
+      desc: '3 drink in un solo giorno',
+      earned: maxDrinksInDay >= 3,
+    },
+    {
+      id: 'in_forma',
+      emoji: '🔥',
+      name: 'In Forma',
+      desc: '5 sport in una settimana',
+      earned: workoutsThisWeek >= 5,
+    },
+    {
+      id: 'virtuoso',
+      emoji: '🌟',
+      name: 'Virtuoso',
+      desc: 'Score superiore a +15',
+      earned: hearts >= 15,
+    },
+    {
+      id: 'debiti',
+      emoji: '💸',
+      name: 'Troppo Bere',
+      desc: 'Score sceso sotto -5',
+      earned: hearts <= -5,
+    },
+    {
+      id: 'maratoneta',
+      emoji: '🏅',
+      name: 'Maratoneta',
+      desc: '42 km totali corsi',
+      earned: totalKm >= 42,
+    },
+    {
+      id: 'scalatore',
+      emoji: '🏔️',
+      name: 'Scalatore',
+      desc: '500m di dislivello totali',
+      earned: totalElev >= 500,
+    },
+  ];
+}
 
 export default function ProfiloScreen() {
   const { user, logout, updateAvatar } = useAuth();
+  const { state } = useApp();
   const router = useRouter();
   const [uploading, setUploading] = useState(false);
+
+  const badges = computeBadges(state.logs, state.hearts);
+  const earnedBadges = badges.filter(b => b.earned);
+  const lockedBadges = badges.filter(b => !b.earned);
 
   async function pickAndUpload() {
     try {
@@ -33,12 +142,13 @@ export default function ProfiloScreen() {
       if (result.canceled || !result.assets[0]) return;
 
       setUploading(true);
-      const uri = result.assets[0].uri;
+      const asset = result.assets[0];
+      const uri = asset.uri;
+      const path = `avatars/${user!.id}.jpg`;
 
+      // Leggi il file e caricalo direttamente come blob
       const response = await fetch(uri);
       const blob = await response.blob();
-
-      const path = `${user!.id}.jpg`;
 
       const { error: uploadError } = await supabase.storage
         .from('avatars')
@@ -76,7 +186,7 @@ export default function ProfiloScreen() {
       <View style={styles.avatarSection}>
         <TouchableOpacity onPress={pickAndUpload} disabled={uploading} style={styles.avatarWrap}>
           {user?.avatarUrl ? (
-            <Image source={{ uri: user.avatarUrl }} style={styles.avatarImg} />
+            <Image key={user.avatarUrl} source={{ uri: user.avatarUrl }} style={styles.avatarImg} />
           ) : (
             <View style={styles.avatarPlaceholder}>
               <Text style={styles.avatarEmoji}>🐷</Text>
@@ -107,6 +217,45 @@ export default function ProfiloScreen() {
           <Text style={styles.infoValue}>{user?.email}</Text>
         </View>
       </View>
+
+      {/* Badge */}
+      <Text style={styles.sectionTitle}>
+        🏅 Badge — {earnedBadges.length}/{badges.length} sbloccati
+      </Text>
+
+      {earnedBadges.length > 0 && (
+        <View style={styles.badgeGrid}>
+          {earnedBadges.map(b => (
+            <View key={b.id} style={styles.badgeCard}>
+              <Text style={styles.badgeEmoji}>{b.emoji}</Text>
+              <Text style={styles.badgeName}>{b.name}</Text>
+              <Text style={styles.badgeDesc}>{b.desc}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {lockedBadges.length > 0 && (
+        <View style={styles.badgeGrid}>
+          {lockedBadges.map(b => (
+            <View key={b.id} style={[styles.badgeCard, styles.badgeLocked]}>
+              <Text style={[styles.badgeEmoji, styles.badgeEmojiLocked]}>🔒</Text>
+              <Text style={[styles.badgeName, styles.badgeNameLocked]}>{b.name}</Text>
+              <Text style={styles.badgeDesc}>{b.desc}</Text>
+            </View>
+          ))}
+        </View>
+      )}
+
+      {/* Admin panel — solo per Matteo */}
+      {user?.email === 'de.pasqual.matteo@gmail.com' && (
+        <TouchableOpacity
+          style={styles.adminBtn}
+          onPress={() => router.push('/admin' as any)}
+        >
+          <Text style={styles.adminText}>⚙️ Admin</Text>
+        </TouchableOpacity>
+      )}
 
       {/* Logout */}
       <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
@@ -158,6 +307,38 @@ const styles = StyleSheet.create({
   infoLabel: { fontSize: 14, color: '#aaa', fontWeight: '600' },
   infoValue: { fontSize: 14, color: '#1a1a1a', fontWeight: '600', maxWidth: '65%', textAlign: 'right' },
 
+  sectionTitle: {
+    fontSize: 14, fontWeight: '700', color: '#1a1a1a',
+    marginBottom: 12, marginTop: 8,
+  },
+
+  badgeGrid: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 12,
+  },
+  badgeCard: {
+    backgroundColor: '#fff', borderRadius: 14, padding: 14,
+    alignItems: 'center', width: '47%',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
+    borderWidth: 2, borderColor: '#FFD700',
+  },
+  badgeLocked: {
+    borderColor: '#eee', backgroundColor: '#fafafa',
+  },
+  badgeEmoji: { fontSize: 32, marginBottom: 6 },
+  badgeEmojiLocked: { opacity: 0.4 },
+  badgeName: { fontSize: 13, fontWeight: '800', color: '#1a1a1a', textAlign: 'center', marginBottom: 4 },
+  badgeNameLocked: { color: '#ccc' },
+  badgeDesc: { fontSize: 11, color: '#aaa', textAlign: 'center', lineHeight: 15 },
+
+  adminBtn: {
+    backgroundColor: '#1a1a1a',
+    borderRadius: 14,
+    padding: 16,
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  adminText: { color: '#FFD700', fontWeight: '700', fontSize: 16 },
   logoutBtn: {
     backgroundColor: '#ff3b30', borderRadius: 14, padding: 16,
     alignItems: 'center', marginTop: 8,

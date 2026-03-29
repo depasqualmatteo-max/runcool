@@ -1,18 +1,23 @@
 {
   "cli": {
-    "version": ">= 14.0.0"
+    "version": ">= 14.0.0",
+    "appVersionSource": "remote"
   },
   "build": {
     "preview": {
       "distribution": "internal",
+      "channel": "production",
       "android": {
         "buildType": "apk"
       },
       "ios": {
+        "distribution": "internal",
         "simulator": false
       }
     },
     "production": {
+      "channel": "production",
+      "autoIncrement": true,
       "android": {
         "buildType": "app-bundle"
       },
@@ -24,9 +29,10 @@
   "submit": {
     "production": {
       "ios": {
-        "appleId": "",
-        "ascAppId": "",
-        "appleTeamId": ""
+        "language": "it-IT"
+      },
+      "android": {
+        "track": "internal"
       }
     }
   }

@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { registerForPushNotifications, sendPushNotification, isMondayAndNotSentYet } from '@/lib/notifications';
 
 export interface AuthUser {
   id: string;
@@ -101,9 +102,48 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       } else {
         setClan(null);
       }
+
+      // Registra push token
+      registerForPushNotifications().then(async (token) => {
+        if (token && token !== profile.push_token) {
+          await supabase.from('profiles').update({ push_token: token }).eq('id', userId);
+        }
+        // Recap settimanale del lunedì
+        if (token && isMondayAndNotSentYet('weekly')) {
+          await sendWeeklyRecap(userId, profile.clan_id, token);
+        }
+      });
+
     } finally {
       setIsLoading(false);
     }
+  }
+
+  async function sendWeeklyRecap(userId: string, clanId: string | null, myToken: string) {
+    const { data: logs } = await supabase
+      .from('logs')
+      .select('type, hearts_delta')
+      .eq('user_id', userId)
+      .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString());
+
+    if (!logs) return;
+    const drinks = logs.filter((l) => l.type === 'drink').length;
+    const heartsGained = logs.filter((l) => l.type === 'workout').reduce((s, l) => s + (l.hearts_delta || 0), 0);
+    const heartsLost = Math.abs(logs.filter((l) => l.type === 'drink').reduce((s, l) => s + (l.hearts_delta || 0), 0));
+
+    let clanLine = '';
+    if (clanId) {
+      const { data: members } = await supabase.from('profiles').select('username, hearts').eq('clan_id', clanId).order('hearts', { ascending: false });
+      if (members && members.length > 0) {
+        clanLine = ` 🏆 Leader: ${members[0].username}`;
+      }
+    }
+
+    await sendPushNotification(
+      myToken,
+      'RunCool — Recap settimanale 🐷',
+      `Questa settimana: ${drinks} drink 🍺 | +${heartsGained} ❤️ guadagnati | -${heartsLost} ❤️ persi${clanLine}`,
+    );
   }
 
   async function loadClan(clanId: string) {

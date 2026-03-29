@@ -5,8 +5,10 @@ import {
 } from 'react-native';
 import { useAuth } from '@/context/AuthContext';
 import { useApp } from '@/context/AppContext';
+import ClassificheScreen from './classifiche';
 
 export default function ClanScreen() {
+  const [mainTab, setMainTab] = useState<'clan' | 'classifiche'>('clan');
   const { user, clan, createClan, joinClan, leaveClan, logout, refreshClan } = useAuth();
   const { state } = useApp();
   const [clanName, setClanName] = useState('');
@@ -59,8 +61,32 @@ export default function ClanScreen() {
     }
   }
 
+  if (mainTab === 'classifiche') {
+    return (
+      <View style={{ flex: 1 }}>
+        <View style={styles.topToggle}>
+          <TouchableOpacity style={styles.toggleBtn} onPress={() => setMainTab('clan')}>
+            <Text style={styles.toggleBtnText}>🏆 Clan</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.toggleBtn, styles.toggleBtnActive]}>
+            <Text style={[styles.toggleBtnText, styles.toggleBtnTextActive]}>📊 Classifiche</Text>
+          </TouchableOpacity>
+        </View>
+        <ClassificheScreen />
+      </View>
+    );
+  }
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      <View style={styles.topToggle}>
+        <TouchableOpacity style={[styles.toggleBtn, styles.toggleBtnActive]}>
+          <Text style={[styles.toggleBtnText, styles.toggleBtnTextActive]}>🏆 Clan</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.toggleBtn} onPress={() => setMainTab('classifiche')}>
+          <Text style={styles.toggleBtnText}>📊 Classifiche</Text>
+        </TouchableOpacity>
+      </View>
       {/* Profile */}
       <View style={styles.profileCard}>
         <Text style={styles.profileEmoji}>🐷</Text>
@@ -179,6 +205,26 @@ export default function ClanScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f7f7f7' },
   content: { padding: 20, paddingBottom: 60 },
+
+  topToggle: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginTop: 12,
+    marginBottom: 4,
+    backgroundColor: '#e8e8e8',
+    borderRadius: 12,
+    padding: 4,
+  },
+  toggleBtn: {
+    flex: 1, paddingVertical: 10, borderRadius: 10, alignItems: 'center',
+  },
+  toggleBtnActive: {
+    backgroundColor: '#fff',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1, shadowRadius: 2, elevation: 2,
+  },
+  toggleBtnText: { fontSize: 14, fontWeight: '600', color: '#888' },
+  toggleBtnTextActive: { color: '#1a1a1a' },
 
   sectionTitle: {
     fontSize: 13, fontWeight: '700', color: '#aaa',

@@ -1,11 +1,12 @@
 import React from 'react';
 import { Tabs, Redirect } from 'expo-router';
 import { Text, Platform, TouchableOpacity, Image, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'expo-router';
 
 function TabIcon({ emoji }: { emoji: string }) {
-  return <Text style={{ fontSize: Platform.OS === 'web' ? 26 : 22 }}>{emoji}</Text>;
+  return <Text style={{ fontSize: Platform.OS === 'web' ? 24 : 20 }}>{emoji}</Text>;
 }
 
 function ProfileButton() {
@@ -29,9 +30,12 @@ function ProfileButton() {
 
 export default function TabLayout() {
   const { user, isLoading } = useAuth();
+  const insets = useSafeAreaInsets();
 
   if (isLoading) return null;
   if (!user) return <Redirect href="/(auth)/login" />;
+
+  const tabBarHeight = Platform.OS === 'web' ? 80 : 55 + insets.bottom;
 
   return (
     <Tabs
@@ -39,15 +43,24 @@ export default function TabLayout() {
         tabBarActiveTintColor: '#E8445A',
         tabBarInactiveTintColor: '#aaa',
         tabBarStyle: {
-          backgroundColor: '#fff',
-          borderTopColor: '#eee',
-          height: Platform.OS === 'web' ? 80 : undefined,
-          paddingBottom: Platform.OS === 'web' ? 12 : undefined,
-          paddingTop: Platform.OS === 'web' ? 8 : undefined,
+          backgroundColor: '#ffffff',
+          borderTopColor: '#dddddd',
+          borderTopWidth: 1,
+          height: tabBarHeight,
+          paddingBottom: Platform.OS === 'web' ? 12 : insets.bottom + 2,
+          paddingTop: 6,
+          elevation: 8,
+          shadowColor: '#000',
+          shadowOffset: { width: 0, height: -2 },
+          shadowOpacity: 0.1,
+          shadowRadius: 4,
         },
         tabBarLabelStyle: {
-          fontSize: Platform.OS === 'web' ? 12 : undefined,
+          fontSize: 9,
           fontWeight: '600' as const,
+        },
+        tabBarIconStyle: {
+          marginBottom: -2,
         },
         headerStyle: { backgroundColor: '#fff' },
         headerTitleStyle: { fontWeight: '700', color: '#1a1a1a' },
@@ -64,19 +77,11 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="two"
+        name="aggiungi"
         options={{
-          title: 'Bevi, Maialino',
-          tabBarLabel: 'Bevi',
-          tabBarIcon: () => <TabIcon emoji="🐷" />,
-        }}
-      />
-      <Tabs.Screen
-        name="log-workout"
-        options={{
-          title: 'Fai Sport',
-          tabBarLabel: 'Sport',
-          tabBarIcon: () => <TabIcon emoji="🏃" />,
+          title: 'Aggiungi',
+          tabBarLabel: 'Aggiungi',
+          tabBarIcon: () => <TabIcon emoji="➕" />,
         }}
       />
       <Tabs.Screen
@@ -88,29 +93,19 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="classifiche"
+        name="social"
         options={{
-          title: 'Classifiche',
-          tabBarLabel: 'Classifica',
-          tabBarIcon: () => <TabIcon emoji="📊" />,
-        }}
-      />
-      <Tabs.Screen
-        name="chat"
-        options={{
-          title: 'Chat',
-          tabBarLabel: 'Chat',
+          title: 'Social',
+          tabBarLabel: 'Social',
           tabBarIcon: () => <TabIcon emoji="💬" />,
         }}
       />
-      <Tabs.Screen
-        name="history"
-        options={{
-          title: 'Storico',
-          tabBarLabel: 'Storico',
-          tabBarIcon: () => <TabIcon emoji="📋" />,
-        }}
-      />
+      {/* Schermate nascoste dalla tab bar */}
+      <Tabs.Screen name="two" options={{ href: null }} />
+      <Tabs.Screen name="log-workout" options={{ href: null }} />
+      <Tabs.Screen name="classifiche" options={{ href: null }} />
+      <Tabs.Screen name="chat" options={{ href: null }} />
+      <Tabs.Screen name="history" options={{ href: null }} />
     </Tabs>
   );
 }

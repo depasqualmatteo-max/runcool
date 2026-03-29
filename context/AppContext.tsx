@@ -5,6 +5,7 @@ import { DRINK_MAP } from '@/constants/drinks';
 import { WORKOUT_MAP, calcWalkingCalories } from '@/constants/workouts';
 import { calcHeartsLost, calcHeartsGained } from '@/constants/hearts';
 import { useAuth } from '@/context/AuthContext';
+import { sendPushNotification } from '@/lib/notifications';
 import type { DrinkId, WorkoutId } from '@/types';
 
 export interface LogWorkoutParams {
@@ -158,6 +159,28 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       .eq('id', user.id);
 
     setState((s) => ({ hearts: newHearts, logs: [rowToLogEntry(logRow), ...s.logs] }));
+
+    // Notifica sorpasso classifica clan
+    if (user.clanId) {
+      const { data: members } = await supabase
+        .from('profiles')
+        .select('id, username, hearts, push_token')
+        .eq('clan_id', user.clanId)
+        .neq('id', user.id);
+
+      if (members) {
+        const overtaken = members.filter(
+          (m) => m.hearts !== null && m.hearts >= state.hearts && m.hearts < newHearts && m.push_token,
+        );
+        for (const m of overtaken) {
+          await sendPushNotification(
+            m.push_token,
+            'RunCool — Sorpasso! 🏃',
+            `${user.username} ti ha superato in classifica! Muoviti maialino 🐷`,
+          );
+        }
+      }
+    }
   }
 
   async function deleteLog(id: string) {

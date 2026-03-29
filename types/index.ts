@@ -27,6 +27,7 @@ export interface DrinkDefinition {
   name: string;
   calories: number;
   icon: string;
+  heartsLost: number;
   hasQuantityPrompt?: boolean;
 }
 

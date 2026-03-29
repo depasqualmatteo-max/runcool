@@ -5,11 +5,12 @@ import {
 } from 'react-native';
 import { Redirect, useRouter } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/lib/supabase';
 
 export default function LoginScreen() {
   const { user, login, isLoading } = useAuth();
   const router = useRouter();
-  const [email, setEmail] = useState('');
+  const [emailOrUsername, setEmailOrUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -17,13 +18,24 @@ export default function LoginScreen() {
   if (user) return <Redirect href="/(tabs)" />;
 
   async function handleLogin() {
-    if (!email.trim() || !password.trim()) {
-      Alert.alert('Ehi maialino', 'Inserisci email e password 🐷');
+    if (!emailOrUsername.trim() || !password.trim()) {
+      Alert.alert('Ehi maialino', 'Inserisci email (o username) e password 🐷');
       return;
     }
     setLoading(true);
     try {
-      await login(email.trim(), password);
+      let emailToUse = emailOrUsername.trim();
+      // Se non contiene @ è uno username → cerco l'email corrispondente
+      if (!emailToUse.includes('@')) {
+        const { data, error } = await supabase
+          .rpc('get_email_by_username', { p_username: emailToUse });
+        if (error || !data) {
+          Alert.alert('Ops', 'Username non trovato 🐷');
+          return;
+        }
+        emailToUse = data;
+      }
+      await login(emailToUse, password);
       router.replace('/(tabs)');
     } catch (e: any) {
       Alert.alert('Ops', e.message);
@@ -43,15 +55,14 @@ export default function LoginScreen() {
         <Text style={styles.subtitle}>Accedi al tuo account</Text>
 
         <View style={styles.form}>
-          <Text style={styles.label}>Email</Text>
+          <Text style={styles.label}>Email o Username</Text>
           <TextInput
             style={styles.input}
-            placeholder="tu@example.com"
+            placeholder="tu@example.com oppure maialino23"
             placeholderTextColor="#bbb"
-            value={email}
-            onChangeText={setEmail}
+            value={emailOrUsername}
+            onChangeText={setEmailOrUsername}
             autoCapitalize="none"
-            keyboardType="email-address"
             autoComplete="email"
           />
 

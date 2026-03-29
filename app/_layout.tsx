@@ -4,6 +4,7 @@ import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { useEffect } from 'react';
 import { Platform } from 'react-native';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useColorScheme } from '@/components/useColorScheme';
 import { AuthProvider } from '@/context/AuthContext';
@@ -66,11 +67,13 @@ export default function RootLayout() {
   }, []);
 
   return (
-    <AuthProvider>
-      <AppProvider>
-        {loaded ? <RootLayoutNav /> : null}
-      </AppProvider>
-    </AuthProvider>
+    <SafeAreaProvider>
+      <AuthProvider>
+        <AppProvider>
+          {loaded ? <RootLayoutNav /> : null}
+        </AppProvider>
+      </AuthProvider>
+    </SafeAreaProvider>
   );
 }
 
@@ -89,6 +92,17 @@ function RootLayoutNav() {
             headerStyle: { backgroundColor: '#fff' },
             headerTitleStyle: { fontWeight: '700', color: '#1a1a1a' },
             headerShadowVisible: false,
+          }}
+        />
+        <Stack.Screen
+          name="admin"
+          options={{
+            title: '⚙️ Admin',
+            presentation: 'modal',
+            headerStyle: { backgroundColor: '#1a1a1a' },
+            headerTitleStyle: { fontWeight: '700', color: '#FFD700' },
+            headerShadowVisible: false,
+            headerTintColor: '#FFD700',
           }}
         />
       </Stack>

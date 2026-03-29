@@ -7,7 +7,6 @@ import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { useApp } from '@/context/AppContext';
 import { DRINKS } from '@/constants/drinks';
-import { calcHeartsLost } from '@/constants/hearts';
 import { DrinkId } from '@/types';
 
 export default function LogDrinkScreen() {
@@ -21,8 +20,8 @@ export default function LogDrinkScreen() {
   const [bottPeople, setBottPeople] = useState(1);
 
   const selected = DRINKS.find((d) => d.id === selectedDrink);
-  const previewCalories = selected ? selected.calories * quantity : 0;
-  const previewHearts = selected ? calcHeartsLost(previewCalories) : 0;
+  const previewCalories = selected ? Math.round(selected.calories * quantity) : 0;
+  const previewHearts = selected ? Math.round(selected.heartsLost * quantity) : 0;
 
   function handleSelectDrink(id: DrinkId) {
     const drink = DRINKS.find((d) => d.id === id)!;
@@ -72,7 +71,7 @@ export default function LogDrinkScreen() {
 
       <View style={styles.grid}>
         {DRINKS.map((drink) => {
-          const hearts = calcHeartsLost(drink.calories);
+          const hearts = drink.heartsLost;
           const isSelected = selectedDrink === drink.id;
           return (
             <TouchableOpacity
@@ -160,7 +159,7 @@ export default function LogDrinkScreen() {
                 </Text>
               </Text>
               <Text style={styles.modalCalcSub}>
-                -{calcHeartsLost(Math.round((bottQty * 600) / bottPeople))} ❤️ a testa
+                -{Math.max(1, Math.round((bottQty * 6) / bottPeople))} ❤️ a testa
               </Text>
             </View>
 

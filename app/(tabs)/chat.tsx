@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, FlatList,
-  StyleSheet, KeyboardAvoidingView, Platform, Image,
-  ActivityIndicator,
+  StyleSheet, Platform, Image, ActivityIndicator,
 } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
+
+type ChatMode = 'global' | 'clan';
 
 interface Message {
   id: string;
@@ -15,6 +16,7 @@ interface Message {
   username: string;
   avatar_url: string | null;
   text: string;
+  clan_id: string | null;
   created_at: string;
 }
 
@@ -23,14 +25,14 @@ function Avatar({ uri, isMe }: { uri: string | null; isMe: boolean }) {
     <View style={styles.avatar}>
       {uri
         ? <Image source={{ uri }} style={styles.avatarImg} />
-        : <Text style={styles.avatarEmoji}>{isMe ? '🐷' : '👤'}</Text>
-      }
+        : <Text style={styles.avatarEmoji}>{isMe ? '🐷' : '👤'}</Text>}
     </View>
   );
 }
 
 export default function ChatScreen() {
   const { user } = useAuth();
+  const [mode, setMode] = useState<ChatMode>('global');
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(true);
@@ -42,39 +44,52 @@ export default function ChatScreen() {
   }, []);
 
   const fetchMessages = useCallback(async () => {
-    const { data } = await supabase
+    setLoading(true);
+    let query = supabase
       .from('messages')
       .select('*')
       .order('created_at', { ascending: true })
       .limit(200);
+
+    if (mode === 'clan') {
+      if (!user?.clanId) { setMessages([]); setLoading(false); return; }
+      query = query.eq('clan_id', user.clanId);
+    } else {
+      query = query.is('clan_id', null);
+    }
+
+    const { data } = await query;
     if (data) setMessages(data as Message[]);
     setLoading(false);
     scrollToBottom(false);
-  }, [scrollToBottom]);
+  }, [mode, user?.clanId, scrollToBottom]);
 
   useEffect(() => {
     fetchMessages();
 
+    const channelName = mode === 'clan' ? `chat-clan-${user?.clanId}` : 'chat-global';
     const channel = supabase
-      .channel('chat-realtime')
-      .on(
-        'postgres_changes',
-        { event: 'INSERT', schema: 'public', table: 'messages' },
-        (payload) => {
-          setMessages((prev) => {
-            if (prev.some((m) => m.id === payload.new.id)) return prev;
-            return [...prev, payload.new as Message];
-          });
-          scrollToBottom();
-        }
-      )
+      .channel(channelName)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages' }, (payload) => {
+        const msg = payload.new as Message;
+        const isCorrectMode = mode === 'clan'
+          ? msg.clan_id === user?.clanId
+          : msg.clan_id === null;
+        if (!isCorrectMode) return;
+        setMessages((prev) => {
+          if (prev.some((m) => m.id === msg.id)) return prev;
+          return [...prev, msg];
+        });
+        scrollToBottom();
+      })
       .subscribe();
 
     return () => { supabase.removeChannel(channel); };
-  }, [fetchMessages, scrollToBottom]);
+  }, [fetchMessages, mode, user?.clanId, scrollToBottom]);
 
   const send = async () => {
     if (!user || !text.trim() || sending) return;
+    if (mode === 'clan' && !user.clanId) return;
     const msgText = text.trim();
     setText('');
     setSending(true);
@@ -84,6 +99,7 @@ export default function ChatScreen() {
         username: user.username,
         avatar_url: user.avatarUrl ?? null,
         text: msgText,
+        clan_id: mode === 'clan' ? user.clanId : null,
       });
     } catch {
       setText(msgText);
@@ -109,15 +125,36 @@ export default function ChatScreen() {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
-    >
+    <View style={styles.container}>
+      {/* Toggle Clan / Tutti */}
+      <View style={styles.toggle}>
+        <TouchableOpacity
+          style={[styles.toggleBtn, mode === 'global' && styles.toggleBtnActive]}
+          onPress={() => setMode('global')}
+        >
+          <Text style={[styles.toggleText, mode === 'global' && styles.toggleTextActive]}>🌍 Tutti</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.toggleBtn, mode === 'clan' && styles.toggleBtnActive]}
+          onPress={() => setMode('clan')}
+          disabled={!user?.clanId}
+        >
+          <Text style={[styles.toggleText, mode === 'clan' && styles.toggleTextActive, !user?.clanId && styles.toggleTextDisabled]}>
+            🏆 Clan
+          </Text>
+        </TouchableOpacity>
+      </View>
+
+      {/* Messaggi */}
       {loading ? (
         <View style={styles.center}>
           <ActivityIndicator size="large" color="#FFD700" />
-          <Text style={styles.loadingText}>Caricamento chat...</Text>
+        </View>
+      ) : mode === 'clan' && !user?.clanId ? (
+        <View style={styles.center}>
+          <Text style={styles.emptyEmoji}>🏆</Text>
+          <Text style={styles.emptyText}>Non sei in un clan</Text>
+          <Text style={styles.emptyHint}>Unisciti a un clan per chattare!</Text>
         </View>
       ) : messages.length === 0 ? (
         <View style={styles.center}>
@@ -136,12 +173,13 @@ export default function ChatScreen() {
         />
       )}
 
+      {/* Input */}
       <View style={styles.inputBar}>
         <TextInput
           style={styles.input}
           value={text}
           onChangeText={setText}
-          placeholder="Scrivi un messaggio..."
+          placeholder={mode === 'clan' ? 'Scrivi al clan...' : 'Scrivi a tutti...'}
           placeholderTextColor="#bbb"
           multiline
           maxLength={500}
@@ -156,74 +194,47 @@ export default function ChatScreen() {
           <Text style={styles.sendIcon}>➤</Text>
         </TouchableOpacity>
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f7f7f7' },
+  toggle: {
+    flexDirection: 'row',
+    marginHorizontal: 16,
+    marginTop: 10,
+    marginBottom: 6,
+    backgroundColor: '#e8e8e8',
+    borderRadius: 12,
+    padding: 4,
+  },
+  toggleBtn: { flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: 'center' },
+  toggleBtnActive: { backgroundColor: '#fff', elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
+  toggleText: { fontSize: 14, fontWeight: '600', color: '#888' },
+  toggleTextActive: { color: '#1a1a1a' },
+  toggleTextDisabled: { color: '#ccc' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
-  loadingText: { color: '#aaa', fontSize: 14 },
   emptyEmoji: { fontSize: 48 },
   emptyText: { fontSize: 16, fontWeight: '700', color: '#ccc' },
   emptyHint: { fontSize: 13, color: '#ddd' },
-
   list: { padding: 12, paddingBottom: 4, gap: 6 },
-
-  msgRow: {
-    flexDirection: 'row-reverse',
-    alignItems: 'flex-end',
-    gap: 8,
-    marginBottom: 2,
-  },
-  msgRowMe: {
-    flexDirection: 'row',
-  },
-
-  avatar: {
-    width: 34, height: 34, borderRadius: 17,
-    backgroundColor: '#eee', alignItems: 'center', justifyContent: 'center',
-    overflow: 'hidden', flexShrink: 0,
-  },
+  msgRow: { flexDirection: 'row-reverse', alignItems: 'flex-end', gap: 8, marginBottom: 2 },
+  msgRowMe: { flexDirection: 'row' },
+  avatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#eee', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 },
   avatarImg: { width: 34, height: 34, borderRadius: 17 },
   avatarEmoji: { fontSize: 18 },
-
-  bubble: {
-    maxWidth: '70%', borderRadius: 18, paddingHorizontal: 13, paddingVertical: 8,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05, shadowRadius: 3, elevation: 1,
-  },
-  bubbleMe: {
-    backgroundColor: '#fff',
-    borderBottomLeftRadius: 4,
-  },
-  bubbleThem: {
-    backgroundColor: '#FFD700',
-    borderBottomRightRadius: 4,
-  },
+  bubble: { maxWidth: '70%', borderRadius: 18, paddingHorizontal: 13, paddingVertical: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1 },
+  bubbleMe: { backgroundColor: '#fff', borderBottomLeftRadius: 4 },
+  bubbleThem: { backgroundColor: '#FFD700', borderBottomRightRadius: 4 },
   bubbleUser: { fontSize: 11, fontWeight: '700', color: '#E8445A', marginBottom: 2 },
   bubbleText: { fontSize: 15, color: '#1a1a1a', lineHeight: 20 },
   bubbleTextMe: { color: '#1a1a1a' },
   bubbleTime: { fontSize: 10, color: '#aaa', marginTop: 3, textAlign: 'right' },
   bubbleTimeMe: { color: '#aaa' },
-
-  inputBar: {
-    flexDirection: 'row', alignItems: 'flex-end',
-    backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#eee',
-    padding: 10, gap: 8,
-    paddingBottom: Platform.OS === 'ios' ? 24 : 10,
-  },
-  input: {
-    flex: 1, backgroundColor: '#f7f7f7', borderRadius: 22,
-    paddingHorizontal: 16, paddingVertical: Platform.OS === 'web' ? 10 : 8,
-    fontSize: 15, color: '#1a1a1a', maxHeight: 120,
-    borderWidth: 1, borderColor: '#eee',
-    ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}),
-  },
-  sendBtn: {
-    width: 44, height: 44, borderRadius: 22,
-    backgroundColor: '#FFD700', alignItems: 'center', justifyContent: 'center',
-  },
+  inputBar: { flexDirection: 'row', alignItems: 'flex-end', backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#eee', padding: 10, gap: 8, paddingBottom: Platform.OS === 'ios' ? 24 : 10 },
+  input: { flex: 1, backgroundColor: '#f7f7f7', borderRadius: 22, paddingHorizontal: 16, paddingVertical: Platform.OS === 'web' ? 10 : 8, fontSize: 15, color: '#1a1a1a', maxHeight: 120, borderWidth: 1, borderColor: '#eee', ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) },
+  sendBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#FFD700', alignItems: 'center', justifyContent: 'center' },
   sendBtnDisabled: { backgroundColor: '#e8e8e8' },
   sendIcon: { fontSize: 16, color: '#1a1a1a', marginLeft: 2 },
 });

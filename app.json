@@ -2,7 +2,7 @@
   "expo": {
     "name": "runcool",
     "slug": "runcool",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "runcool",
@@ -13,7 +13,16 @@
       "backgroundColor": "#111111"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.matteobruno5.runcool",
+      "infoPlist": {
+        "ITSAppUsesNonExemptEncryption": false
+      }
+    },
+    "notification": {
+      "icon": "./assets/images/icon.png",
+      "color": "#FFD700",
+      "androidMode": "default"
     },
     "android": {
       "adaptiveIcon": {
@@ -23,28 +32,22 @@
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
-      "package": "com.matteobruno5.runcool"
-    },
-    "web": {
-      "bundler": "metro",
-      "output": "single",
-      "favicon": "./assets/images/favicon.png",
-      "name": "RunCool",
-      "shortName": "RunCool",
-      "description": "Corri birresponsabilmente 🐷",
-      "themeColor": "#FFD700",
-      "backgroundColor": "#111111",
-      "lang": "it",
-      "display": "standalone"
+      "package": "com.matteobruno5.runcool",
+      "permissions": [
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "plugins": [
       "expo-router",
       "expo-updates",
       "expo-font",
       "expo-web-browser",
-      ["expo-image-picker", {
-        "photosPermission": "RunCool usa la tua galleria per la foto profilo 🐷"
-      }]
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "RunCool usa la tua galleria per la foto profilo 🐷"
+        }
+      ]
     ],
     "updates": {
       "url": "https://u.expo.dev/730ff266-09d0-4b0a-94b0-9891663f40aa"
