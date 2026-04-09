@@ -6,6 +6,7 @@ import { WORKOUT_MAP, calcWalkingCalories } from '@/constants/workouts';
 import { calcHeartsLost, calcHeartsGained } from '@/constants/hearts';
 import { useAuth } from '@/context/AuthContext';
 import { sendPushNotification } from '@/lib/notifications';
+import { getCountryCode } from '@/lib/geo';
 import type { DrinkId, WorkoutId } from '@/types';
 
 export interface LogWorkoutParams {
@@ -13,6 +14,10 @@ export interface LogWorkoutParams {
   durationMinutes?: number;
   km?: number;
   elevationMeters?: number;
+  /** Se passato, usa queste calorie direttamente senza ricalcolare (usato da health import) */
+  overrideCalories?: number;
+  /** Se passato, usa questi cuori direttamente (per corsa: km → cuori senza calorie) */
+  overrideHearts?: number;
 }
 
 interface AppContextValue {
@@ -78,7 +83,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
           .order('created_at', { ascending: false }),
       ]);
       setState({
-        hearts: profileRes.data?.hearts ?? 10,
+        hearts: Math.round(profileRes.data?.hearts ?? 10),
         logs: (logsRes.data ?? []).map(rowToLogEntry),
       });
     } finally {
@@ -90,8 +95,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!user) return;
     const drink = DRINK_MAP[drinkId];
     const calories = drink.calories * quantity;
-    const heartsLost = calcHeartsLost(calories);
-    const newHearts = state.hearts - heartsLost;
+    // Usa heartsLost dalla definizione del drink × quantità (non calorie / 100)
+    const heartsLost = Math.round(drink.heartsLost * quantity);
+    const newHearts = Math.round(state.hearts - heartsLost);
 
     const { data: logRow, error } = await supabase
       .from('logs')
@@ -119,20 +125,44 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   async function logWorkout(params: LogWorkoutParams) {
     if (!user) return;
-    const { workoutId, durationMinutes, km, elevationMeters } = params;
+    const { workoutId, durationMinutes, km, elevationMeters, overrideCalories, overrideHearts } = params;
     const workout = WORKOUT_MAP[workoutId];
 
     let calories = 0;
-    if (workout.inputType === 'duration' && durationMinutes) {
-      calories = (workout.calPerMin ?? 0) * durationMinutes;
-    } else if (workout.inputType === 'km' && km) {
-      calories = (workout.calPerKm ?? 75) * km;
-    } else if (workout.inputType === 'km_elevation') {
-      calories = calcWalkingCalories(km ?? 0, elevationMeters ?? 0);
-    }
+    let heartsGained = 0;
 
-    const heartsGained = calcHeartsGained(calories);
-    const newHearts = state.hearts + heartsGained;
+    if (overrideHearts != null && overrideHearts > 0) {
+      // Cuori già calcolati (es. corsa da import: km → cuori diretto)
+      heartsGained = overrideHearts;
+      calories = overrideCalories ?? 0;
+    } else if (overrideCalories != null && overrideCalories > 0) {
+      calories = overrideCalories;
+      heartsGained = calcHeartsGained(calories);
+    } else {
+      // Calcolo manuale (log-workout screen)
+      // Corsa con directHeartsPerKm: cuori direttamente da km
+      if (workout.directHeartsPerKm && km && km > 0) {
+        heartsGained = Math.max(1, Math.floor(km * workout.directHeartsPerKm));
+        calories = Math.round((workout.calPerKm ?? 60) * km);
+      } else {
+        const isKmSport = workout.inputType === 'km' || workout.inputType === 'km_elevation';
+        if (isKmSport && km && km > 0) {
+          if (workout.inputType === 'km_elevation') {
+            calories = calcWalkingCalories(km, elevationMeters ?? 0);
+          } else {
+            calories = Math.round((workout.calPerKm ?? 60) * km);
+          }
+        } else if (durationMinutes && durationMinutes > 0) {
+          calories = Math.round((workout.calPerMin ?? 7) * durationMinutes);
+        }
+        if (calories === 0 && durationMinutes && durationMinutes > 0) {
+          calories = Math.round(7 * durationMinutes);
+        }
+        heartsGained = calcHeartsGained(calories);
+      }
+    }
+    heartsGained = Math.round(heartsGained);
+    const newHearts = Math.round(state.hearts + heartsGained);
 
     const { data: logRow, error } = await supabase
       .from('logs')
@@ -159,6 +189,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       .eq('id', user.id);
 
     setState((s) => ({ hearts: newHearts, logs: [rowToLogEntry(logRow), ...s.logs] }));
+
+    // Salva country_code in background (non blocca se colonna non esiste)
+    if (logRow?.id) {
+      getCountryCode().then(cc => {
+        if (cc) supabase.from('logs').update({ country_code: cc }).eq('id', logRow.id).then(() => {});
+      }).catch(() => {});
+    }
 
     // Notifica sorpasso classifica clan
     if (user.clanId) {
@@ -189,7 +226,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (!log) return;
 
     const delta = log.type === 'drink' ? log.heartsLost : -log.heartsGained;
-    const newHearts = state.hearts + delta;
+    const newHearts = Math.round(state.hearts + delta);
 
     await supabase.from('logs').delete().eq('id', id).eq('user_id', user.id);
     await supabase.from('profiles').update({ hearts: newHearts }).eq('id', user.id);
