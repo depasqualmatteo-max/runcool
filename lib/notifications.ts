@@ -1,6 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const PROJECT_ID = '730ff266-09d0-4b0a-94b0-9891663f40aa';
 
@@ -60,14 +61,17 @@ export async function sendPushNotification(
 }
 
 // Controlla se oggi è lunedì e non abbiamo ancora mandato il recap settimanale
-export function isMondayAndNotSentYet(lastSentKey: string): boolean {
+const RECAP_STORAGE_KEY = 'weekly_recap_sent';
+
+export async function isMondayAndNotSentYet(lastSentKey: string): Promise<boolean> {
   const today = new Date();
   if (today.getDay() !== 1) return false; // 1 = lunedì
 
-  const lastSent = global.__weeklyRecapSent;
   const todayStr = today.toISOString().split('T')[0];
-  if (lastSent === todayStr) return false;
-
-  global.__weeklyRecapSent = todayStr;
+  try {
+    const lastSent = await AsyncStorage.getItem(RECAP_STORAGE_KEY);
+    if (lastSent === todayStr) return false;
+    await AsyncStorage.setItem(RECAP_STORAGE_KEY, todayStr);
+  } catch (_) {}
   return true;
 }

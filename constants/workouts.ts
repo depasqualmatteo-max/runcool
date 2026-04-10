@@ -2,7 +2,7 @@ import { WorkoutDefinition, WorkoutId } from '@/types';
 
 export const WORKOUTS: WorkoutDefinition[] = [
   // km-based
-  { id: 'corsa',     name: 'Corsa',     icon: '🏃', inputType: 'km',           calPerKm: 60 },
+  { id: 'corsa',     name: 'Corsa',     icon: '🏃', inputType: 'km',           calPerKm: 60, directHeartsPerKm: 0.6 },
   { id: 'camminata', name: 'Camminata', icon: '🚶', inputType: 'km_elevation' },
   // minutes-based
   { id: 'hiit',      name: 'HIIT',      icon: '🔥', inputType: 'duration', calPerMin: 9  },
@@ -10,7 +10,7 @@ export const WORKOUTS: WorkoutDefinition[] = [
   { id: 'tennis',    name: 'Tennis',    icon: '🎾', inputType: 'duration', calPerMin: 7  },
   { id: 'padel',     name: 'Padel',     icon: '🏓', inputType: 'duration', calPerMin: 7  },
   { id: 'calcetto',  name: 'Calcetto',  icon: '⚽', inputType: 'duration', calPerMin: 9  },
-  { id: 'pilates',   name: 'Pilates',   icon: '🧘', inputType: 'duration', calPerMin: 5  },
+  { id: 'pilates',   name: 'Pilates',   icon: '🧘', inputType: 'duration', calPerMin: 7  },
   { id: 'nuoto',     name: 'Nuoto',     icon: '🏊', inputType: 'duration', calPerMin: 10 },
   { id: 'ciclismo',  name: 'Ciclismo',  icon: '🚴', inputType: 'duration', calPerMin: 9  },
   { id: 'boxe',      name: 'Boxe',      icon: '🥊', inputType: 'duration', calPerMin: 11 },

@@ -1,12 +1,27 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/lib/supabase';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
+import { isHealthAvailable } from '@/lib/health';
 
 const HEART_DISPLAY_MAX = 10;
+
+function getMotivationalPhrase(hearts: number): string {
+  if (hearts <= -50) return 'Situazione critica... il fegato chiede pietà 🆘';
+  if (hearts <= -25) return 'Il divano ti sta vincendo... reagisci! 😰';
+  if (hearts <= -10) return 'Hai un bel debito da ripagare — corri! 😅';
+  if (hearts < 0) return 'Sei in rosso — una corsetta e torni in pari 🏃';
+  if (hearts === 0) return 'Parti da zero — fai sport! 💪';
+  if (hearts < 10) return 'Buon inizio, continua così! 🐷';
+  if (hearts < 25) return 'Sei in forma — il maialino è fiero di te 💪';
+  if (hearts < 50) return 'Macchina da guerra! Inarrestabile 🔥';
+  if (hearts < 100) return 'Leggenda vivente — sei un esempio per tutti 🏆';
+  return 'SEI UN DIO DEL RUNNING 🐷👑 Nessuno ti ferma!';
+}
 
 function ScoreRow({ score }: { score: number }) {
   if (score === 0) {
@@ -38,6 +53,17 @@ export default function DashboardScreen() {
   const { state } = useApp();
   const { user, clan } = useAuth();
   const router = useRouter();
+  const [tandem, setTandem] = useState<{ name: string; members: { username: string; hearts: number }[] } | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    supabase.from('profiles').select('tandem_id').eq('id', user.id).single().then(async ({ data }) => {
+      if (!data?.tandem_id) return;
+      const { data: t } = await supabase.from('tandems').select('name').eq('id', data.tandem_id).single();
+      const { data: members } = await supabase.from('profiles').select('username, hearts').eq('tandem_id', data.tandem_id);
+      if (t) setTandem({ name: t.name, members: members ?? [] });
+    });
+  }, [user]);
 
   const today = format(new Date(), 'yyyy-MM-dd');
   const todayLogs = state.logs.filter((l) => l.timestamp.startsWith(today));
@@ -56,13 +82,39 @@ export default function DashboardScreen() {
         <Text style={styles.hello}>Ciao, {user?.username} 🐷</Text>
         <Text style={styles.heartsLabel}>La tua birresponsabilità</Text>
         <Text style={[styles.heartsNumber, { color: scoreColor }]}>
-          {state.hearts > 0 ? `+${state.hearts}` : state.hearts}
+          {state.hearts > 0 ? `+${Math.round(state.hearts)}` : Math.round(state.hearts)}
         </Text>
         <ScoreRow score={state.hearts} />
-        {state.hearts < 0 && <Text style={styles.debtLabel}>Hai un debito da ripagare — corri! 😅</Text>}
-        {state.hearts === 0 && <Text style={styles.debtLabel}>Parti da zero — fai sport!</Text>}
-        {state.hearts > 0 && <Text style={styles.debtLabel}>Sei virtualmente sobrio 💪</Text>}
+        <Text style={styles.debtLabel}>{getMotivationalPhrase(state.hearts)}</Text>
       </View>
+
+      {/* Tandem score */}
+      {tandem && (
+        <>
+          <Text style={styles.sectionTitle}>Il tuo tandem</Text>
+          <View style={[styles.clanCard, { borderColor: '#9C27B0' }]}>
+            <View style={styles.clanHeader}>
+              <Text style={styles.clanName}>👥 {tandem.name}</Text>
+            </View>
+            <Text style={styles.clanScoreLabel}>Punteggio tandem</Text>
+            <Text style={[styles.clanScore, { color: '#9C27B0' }]}>
+              {Math.round(tandem.members.reduce((s, m) => s + m.hearts, 0)) >= 0 ? '+' : ''}
+              {Math.round(tandem.members.reduce((s, m) => s + m.hearts, 0))}
+            </Text>
+            <View style={styles.membersRow}>
+              {tandem.members.map((m, i) => (
+                <View key={i} style={styles.memberBadge}>
+                  <Text style={styles.memberEmoji}>{m.username === user?.username ? '🐷' : '👤'}</Text>
+                  <Text style={styles.memberName}>{m.username}</Text>
+                  <Text style={[styles.memberScore, { color: m.hearts >= 0 ? '#E8445A' : '#ff3b30' }]}>
+                    {m.hearts > 0 ? `+${Math.round(m.hearts)}` : Math.round(m.hearts)}
+                  </Text>
+                </View>
+              ))}
+            </View>
+          </View>
+        </>
+      )}
 
       {/* Clan score */}
       {clan && (
@@ -83,7 +135,7 @@ export default function DashboardScreen() {
                   <Text style={styles.memberEmoji}>{m.id === user?.id ? '🐷' : '👤'}</Text>
                   <Text style={styles.memberName}>{m.username}</Text>
                   <Text style={[styles.memberScore, { color: m.hearts >= 0 ? '#E8445A' : '#ff3b30' }]}>
-                    {m.hearts > 0 ? `+${m.hearts}` : m.hearts}
+                    {m.hearts > 0 ? `+${Math.round(m.hearts)}` : Math.round(m.hearts)}
                   </Text>
                 </View>
               ))}
@@ -134,6 +186,19 @@ export default function DashboardScreen() {
           <Text style={styles.ctaText}>Hai corso?</Text>
         </TouchableOpacity>
       </View>
+
+      {/* Importa da Health */}
+      {isHealthAvailable() && (
+        <TouchableOpacity
+          style={styles.healthBtn}
+          onPress={() => router.push('/(tabs)/health-import')}
+        >
+          <Text style={styles.healthBtnIcon}>{Platform.OS === 'ios' ? '🍎' : '💚'}</Text>
+          <Text style={styles.healthBtnText}>
+            Importa da {Platform.OS === 'ios' ? 'Apple Health' : 'Google Fit'}
+          </Text>
+        </TouchableOpacity>
+      )}
 
       {/* Recent */}
       {state.logs.length > 0 && (
@@ -232,6 +297,17 @@ const styles = StyleSheet.create({
   },
   ctaIcon: { fontSize: 28, marginBottom: 6 },
   ctaText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+
+  healthBtn: {
+    backgroundColor: '#fff', borderRadius: 14, padding: 16,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    marginBottom: 24, gap: 10,
+    borderWidth: 2, borderColor: '#4CAF50',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
+  },
+  healthBtnIcon: { fontSize: 22 },
+  healthBtnText: { fontSize: 15, fontWeight: '700', color: '#2e7d32' },
 
   recentCard: {
     backgroundColor: '#fff', borderRadius: 12, padding: 14,

@@ -95,6 +95,16 @@ function RootLayoutNav() {
           }}
         />
         <Stack.Screen
+          name="regole"
+          options={{
+            title: '📖 Regole del gioco',
+            presentation: 'modal',
+            headerStyle: { backgroundColor: '#fff' },
+            headerTitleStyle: { fontWeight: '700', color: '#1a1a1a' },
+            headerShadowVisible: false,
+          }}
+        />
+        <Stack.Screen
           name="admin"
           options={{
             title: '⚙️ Admin',

@@ -37,6 +37,7 @@ interface AuthContextValue {
   leaveClan: () => Promise<void>;
   refreshClan: () => Promise<void>;
   updateAvatar: (url: string) => Promise<void>;
+  updateUsername: (name: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -109,7 +110,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           await supabase.from('profiles').update({ push_token: token }).eq('id', userId);
         }
         // Recap settimanale del lunedì
-        if (token && isMondayAndNotSentYet('weekly')) {
+        if (token && await isMondayAndNotSentYet('weekly')) {
           await sendWeeklyRecap(userId, profile.clan_id, token);
         }
       });
@@ -277,9 +278,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser((prev) => prev ? { ...prev, avatarUrl: url } : prev);
   }
 
+  async function updateUsername(name: string) {
+    if (!user) return;
+    setUser((prev) => prev ? { ...prev, username: name } : prev);
+  }
+
   return (
     <AuthContext.Provider
-      value={{ user, clan, isLoading, login, register, logout, createClan, joinClan, leaveClan, refreshClan, updateAvatar }}
+      value={{ user, clan, isLoading, login, register, logout, createClan, joinClan, leaveClan, refreshClan, updateAvatar, updateUsername }}
     >
       {children}
     </AuthContext.Provider>

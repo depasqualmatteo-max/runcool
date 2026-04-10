@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity,
+  View, Text, StyleSheet, TouchableOpacity, TextInput,
   Image, ActivityIndicator, Alert, Platform, ScrollView,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
@@ -113,10 +113,12 @@ function computeBadges(logs: any[], hearts: number): Badge[] {
 }
 
 export default function ProfiloScreen() {
-  const { user, logout, updateAvatar } = useAuth();
+  const { user, logout, updateAvatar, updateUsername, refreshClan } = useAuth();
   const { state } = useApp();
   const router = useRouter();
   const [uploading, setUploading] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [newUsername, setNewUsername] = useState(user?.username ?? '');
 
   const badges = computeBadges(state.logs, state.hearts);
   const earnedBadges = badges.filter(b => b.earned);
@@ -137,30 +139,48 @@ export default function ProfiloScreen() {
         allowsEditing: true,
         aspect: [1, 1],
         quality: 0.7,
+        base64: true,
       });
 
       if (result.canceled || !result.assets[0]) return;
 
       setUploading(true);
       const asset = result.assets[0];
-      const uri = asset.uri;
-      const path = `avatars/${user!.id}.jpg`;
+      const base64 = asset.base64;
+      const path = `${user!.id}.jpg`;
 
-      // Leggi il file e caricalo direttamente come blob
-      const response = await fetch(uri);
-      const blob = await response.blob();
+      if (!base64 || base64.length === 0) {
+        throw new Error('Foto non leggibile — riprova');
+      }
+
+      // Converti base64 in Uint8Array per Supabase Storage
+      const binaryString = atob(base64);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
 
       const { error: uploadError } = await supabase.storage
         .from('avatars')
-        .upload(path, blob, { contentType: 'image/jpeg', upsert: true });
+        .upload(path, bytes.buffer, { contentType: 'image/jpeg', upsert: true });
 
       if (uploadError) throw uploadError;
 
-      const { data: { publicUrl } } = supabase.storage
-        .from('avatars')
-        .getPublicUrl(path);
+      // Prova public URL, fallback a signed URL
+      const { data: publicData } = supabase.storage.from('avatars').getPublicUrl(path);
+      let avatarUrl = publicData?.publicUrl;
 
-      const avatarUrl = `${publicUrl}?t=${Date.now()}`;
+      // Se il bucket è privato, usa signed URL
+      if (!avatarUrl) {
+        const { data: signedData, error: signError } = await supabase.storage
+          .from('avatars')
+          .createSignedUrl(path, 2147483647);
+        if (signError || !signedData) throw signError ?? new Error('Signed URL error');
+        avatarUrl = signedData.signedUrl;
+      }
+
+      // Aggiungi timestamp per evitare cache vecchia
+      avatarUrl = avatarUrl + '?t=' + Date.now();
 
       await supabase
         .from('profiles')
@@ -210,7 +230,37 @@ export default function ProfiloScreen() {
       <View style={styles.card}>
         <View style={styles.infoRow}>
           <Text style={styles.infoLabel}>Username</Text>
-          <Text style={styles.infoValue}>{user?.username}</Text>
+          {editingName ? (
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <TextInput
+                style={styles.nameInput}
+                value={newUsername}
+                onChangeText={setNewUsername}
+                autoFocus
+                maxLength={20}
+                autoCapitalize="none"
+              />
+              <TouchableOpacity onPress={async () => {
+                const trimmed = newUsername.trim();
+                if (!trimmed || trimmed.length < 2) { Alert.alert('Nome troppo corto'); return; }
+                try {
+                  await supabase.from('profiles').update({ username: trimmed }).eq('id', user!.id);
+                  await updateUsername(trimmed);
+                  await refreshClan();
+                } catch (e: any) { Alert.alert('Errore', e.message); }
+                setEditingName(false);
+              }}>
+                <Text style={{ fontSize: 18, fontWeight: '700', color: '#4CAF50' }}>✓</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => { setNewUsername(user?.username ?? ''); setEditingName(false); }}>
+                <Text style={{ fontSize: 18, fontWeight: '700', color: '#E8445A' }}>✕</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <TouchableOpacity onPress={() => { setNewUsername(user?.username ?? ''); setEditingName(true); }}>
+              <Text style={styles.infoValue}>{user?.username} ✏️</Text>
+            </TouchableOpacity>
+          )}
         </View>
         <View style={[styles.infoRow, { borderBottomWidth: 0 }]}>
           <Text style={styles.infoLabel}>Email</Text>
@@ -246,6 +296,14 @@ export default function ProfiloScreen() {
           ))}
         </View>
       )}
+
+      {/* Regole */}
+      <TouchableOpacity
+        style={styles.rulesBtn}
+        onPress={() => router.push('/regole' as any)}
+      >
+        <Text style={styles.rulesBtnText}>📖 Regole del gioco</Text>
+      </TouchableOpacity>
 
       {/* Admin panel — solo per Matteo */}
       {user?.email === 'de.pasqual.matteo@gmail.com' && (
@@ -306,6 +364,11 @@ const styles = StyleSheet.create({
   },
   infoLabel: { fontSize: 14, color: '#aaa', fontWeight: '600' },
   infoValue: { fontSize: 14, color: '#1a1a1a', fontWeight: '600', maxWidth: '65%', textAlign: 'right' },
+  nameInput: {
+    fontSize: 14, fontWeight: '600', color: '#1a1a1a',
+    borderBottomWidth: 1.5, borderBottomColor: '#FFD700',
+    paddingVertical: 4, paddingHorizontal: 6, minWidth: 100,
+  },
 
   sectionTitle: {
     fontSize: 14, fontWeight: '700', color: '#1a1a1a',
@@ -331,6 +394,12 @@ const styles = StyleSheet.create({
   badgeNameLocked: { color: '#ccc' },
   badgeDesc: { fontSize: 11, color: '#aaa', textAlign: 'center', lineHeight: 15 },
 
+  rulesBtn: {
+    backgroundColor: '#fff', borderRadius: 14, padding: 16,
+    alignItems: 'center', marginBottom: 12,
+    borderWidth: 1.5, borderColor: '#e0e0e0',
+  },
+  rulesBtnText: { color: '#1a1a1a', fontWeight: '700', fontSize: 15 },
   adminBtn: {
     backgroundColor: '#1a1a1a',
     borderRadius: 14,

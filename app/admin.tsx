@@ -6,7 +6,6 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
 
-const SUPABASE_URL = 'https://qqpxtxcmssxxvajfagie.supabase.co';
 const ADMIN_EMAIL = 'de.pasqual.matteo@gmail.com';
 
 export default function AdminScreen() {
@@ -30,21 +29,48 @@ export default function AdminScreen() {
     }
     setSending(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      const res = await fetch(`${SUPABASE_URL}/functions/v1/send-notification`, {
+      // Prendi i push token direttamente da Supabase (no edge function)
+      let query = supabase.from('profiles').select('push_token').not('push_token', 'is', null);
+      if (target !== 'all') {
+        query = query.eq('clan_id', target);
+      }
+      const { data: profiles, error: dbError } = await query;
+
+      if (dbError) {
+        Alert.alert('Errore DB', dbError.message);
+        return;
+      }
+
+      if (!profiles || profiles.length === 0) {
+        Alert.alert('Nessun utente', 'Nessun utente ha le notifiche attive');
+        return;
+      }
+
+      // Manda direttamente all'Expo Push API
+      const notifications = profiles.map((p: any) => ({
+        to: p.push_token,
+        title: title.trim(),
+        body: body.trim(),
+        sound: 'default' as const,
+      }));
+
+      const res = await fetch('https://exp.host/--/api/v2/push/send', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session?.access_token}`,
-        },
-        body: JSON.stringify({ title: title.trim(), body: body.trim(), target }),
+        headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+        body: JSON.stringify(notifications),
       });
-      const json = await res.json();
-      Alert.alert('✅ Inviata!', `Notifica mandata a ${json.sent} utenti`);
+
+      if (!res.ok) {
+        const text = await res.text();
+        Alert.alert('Errore Expo', `Status ${res.status}: ${text}`);
+        return;
+      }
+
+      Alert.alert('✅ Inviata!', `Notifica mandata a ${notifications.length} utenti`);
       setTitle('');
       setBody('');
-    } catch (e) {
-      Alert.alert('Errore', 'Qualcosa è andato storto');
+    } catch (e: any) {
+      Alert.alert('Errore', e?.message || 'Qualcosa è andato storto');
     } finally {
       setSending(false);
     }
@@ -102,7 +128,7 @@ export default function AdminScreen() {
               );
             }}
           >
-            <Text style={styles.btnText}>🏆 Manda al clan</Text>
+            <Text style={styles.btnTextLight}>🏆 Manda al clan</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -143,4 +169,5 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   btnText: { fontSize: 16, fontWeight: '700', color: '#1a1a1a' },
+  btnTextLight: { fontSize: 16, fontWeight: '700', color: '#fff' },
 });
