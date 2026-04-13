@@ -38,7 +38,6 @@ export interface WorkoutDefinition {
   inputType: WorkoutInputType;
   calPerMin?: number;
   calPerKm?: number;
-  directHeartsPerKm?: number; // Se definito, cuori = floor(km * directHeartsPerKm), senza passare per calorie
 }
 
 export interface DrinkLog {

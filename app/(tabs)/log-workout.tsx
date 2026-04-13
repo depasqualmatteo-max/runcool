@@ -23,29 +23,19 @@ export default function LogWorkoutScreen() {
 
   function calcPreview(): { calories: number; hearts: number } {
     if (!selected) return { calories: 0, hearts: 0 };
-    // Corsa: cuori direttamente da km
-    if (selected.directHeartsPerKm) {
-      const k = parseFloat(km) || 0;
-      const cal = Math.round((selected.calPerKm ?? 60) * k);
-      const h = k > 0 ? Math.max(1, Math.floor(k * selected.directHeartsPerKm)) : 0;
-      return { calories: cal, hearts: h };
-    }
+    let cal = 0;
     if (selected.inputType === 'duration') {
-      const cal = (selected.calPerMin ?? 0) * duration;
-      return { calories: cal, hearts: calcHeartsGained(cal) };
-    }
-    if (selected.inputType === 'km') {
+      cal = Math.round((selected.calPerMin ?? 0) * duration);
+    } else if (selected.inputType === 'km') {
       const k = parseFloat(km) || 0;
-      const cal = Math.round((selected.calPerKm ?? 60) * k);
-      return { calories: cal, hearts: calcHeartsGained(cal) };
-    }
-    if (selected.inputType === 'km_elevation') {
+      cal = Math.round((selected.calPerKm ?? 60) * k);
+    } else if (selected.inputType === 'km_elevation') {
       const k = parseFloat(km) || 0;
       const e = parseInt(elevation) || 0;
-      const cal = calcWalkingCalories(k, e);
-      return { calories: cal, hearts: calcHeartsGained(cal) };
+      cal = calcWalkingCalories(k, e);
     }
-    return { calories: 0, hearts: 0 };
+    const hearts = cal > 0 ? calcHeartsGained(cal, selected.id) : 0;
+    return { calories: cal, hearts };
   }
 
   const { calories: previewCalories, hearts: previewHearts } = calcPreview();
@@ -185,7 +175,7 @@ export default function LogWorkoutScreen() {
             </View>
           </View>
           <Text style={styles.formulaNote}>
-            Formula: 60 kcal/km + 0.5 kcal/m di dislivello
+            Formula: 35 kcal/km + 0.2 kcal/m di dislivello
           </Text>
         </>
       )}

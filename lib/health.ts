@@ -147,10 +147,10 @@ async function fetchHealthKitWorkouts(daysBack: number = 7): Promise<ImportedWor
         distanceKm: (() => {
           const dist = w.totalDistance;
           if (!dist?.quantity) return undefined;
-          let km = dist.quantity;
-          if (dist.unit === 'm') km = dist.quantity / 1000;
+          let km: number;
+          if (dist.unit === 'km') km = dist.quantity;
           else if (dist.unit === 'mi') km = dist.quantity * 1.60934;
-          // 'km' or unknown unit: use as-is
+          else km = dist.quantity / 1000; // default: HealthKit restituisce metri
           return Math.round(km * 100) / 100;
         })(),
         mappedWorkoutId: mapped?.id ?? null,
@@ -282,7 +282,7 @@ async function fetchHealthConnectWorkouts(daysBack: number = 7): Promise<Importe
         distanceRecordsList.push({
           startTime: dr.startTime,
           endTime: dr.endTime,
-          value: dr.distance?.inKilometers ?? 0,
+          value: dr.distance?.inKilometers ?? (dr.distance?.inMeters ? dr.distance.inMeters / 1000 : 0),
         });
       }
     } catch (_) {}
