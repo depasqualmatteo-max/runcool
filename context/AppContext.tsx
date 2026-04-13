@@ -92,7 +92,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   async function logDrink(drinkId: DrinkId, quantity: number) {
     if (!user) return;
     const drink = DRINK_MAP[drinkId];
-    const calories = drink.calories * quantity;
+    const calories = Math.round(drink.calories * quantity);
     // Usa heartsLost dalla definizione del drink × quantità (non calorie / 100)
     const heartsLost = Math.round(drink.heartsLost * quantity);
     const newHearts = Math.round(state.hearts - heartsLost);
