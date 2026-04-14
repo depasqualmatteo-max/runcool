@@ -245,6 +245,10 @@ export default function HealthImportScreen() {
                   </View>
                 )}
                 <View style={styles.stat}>
+                  <Text style={styles.statValue}>{w.caloriesBurned}</Text>
+                  <Text style={styles.statLabel}>kcal raw</Text>
+                </View>
+                <View style={styles.stat}>
                   <Text style={styles.statValue}>{rcCalories}</Text>
                   <Text style={styles.statLabel}>kcal RC</Text>
                 </View>
