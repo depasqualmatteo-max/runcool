@@ -8,7 +8,7 @@ export function calcHeartsLost(calories: number): number {
 
 // ─── SPORT ───
 // Ogni sport ha il suo calPerHeart (dal planning Excel)
-// corsa: 120, pilates: 60, camminata: 240, default: 100
+// corsa: 120, pilates: 60, camminata: 240, default: 120
 export const SPORT_CAL_PER_HEART: Record<string, number> = {
   corsa: 120,
   pilates: 60,
