@@ -83,29 +83,48 @@ export default function ProfiloScreen() {
   // Modalità: personale vs pubblica
   const isOwner = !params.userId || params.userId === user?.id;
 
-  // Dati profilo (per ora solo personale, in futuro fetch da Supabase per altri utenti)
   const [profileData, setProfileData] = useState<{
     username: string; avatarUrl: string | null; hearts: number;
   } | null>(null);
+  const [otherLogs, setOtherLogs] = useState<any[]>([]);
 
   const [uploading, setUploading] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [newUsername, setNewUsername] = useState(user?.username ?? '');
   const [selectedMedal, setSelectedMedal] = useState<Medal | null>(null);
 
-  // Carica profilo pubblico se non è il proprio
+  // Carica profilo + log pubblico se non è il proprio
   useEffect(() => {
     if (isOwner) return;
+    const uid = params.userId!;
+    // Profilo
     supabase.from('profiles').select('username, avatar_url, hearts')
-      .eq('id', params.userId!).single().then(({ data }) => {
+      .eq('id', uid).single().then(({ data }) => {
         if (data) setProfileData({ username: data.username, avatarUrl: data.avatar_url, hearts: data.hearts });
+      });
+    // Log per calcolo medaglie
+    supabase.from('logs')
+      .select('type, hearts_delta, km, elevation_meters, created_at')
+      .eq('user_id', uid)
+      .order('created_at', { ascending: false })
+      .then(({ data }) => {
+        setOtherLogs((data ?? []).map(l => ({
+          type: l.type,
+          heartsLost: l.type === 'drink' ? Math.abs(l.hearts_delta ?? 0) : 0,
+          heartsGained: l.type === 'workout' ? (l.hearts_delta ?? 0) : 0,
+          km: l.km ?? 0,
+          elevationMeters: l.elevation_meters ?? 0,
+          timestamp: l.created_at,
+          quantity: 1,
+        })));
       });
   }, [params.userId]);
 
   const displayName = isOwner ? user?.username : profileData?.username;
   const displayAvatar = isOwner ? user?.avatarUrl : profileData?.avatarUrl;
   const displayHearts = isOwner ? state.hearts : (profileData?.hearts ?? 0);
-  const medals = computeMedals(isOwner ? state.logs : [], displayHearts);
+  const displayLogs = isOwner ? state.logs : otherLogs;
+  const medals = computeMedals(displayLogs, displayHearts);
   const earnedCount = medals.filter(m => m.earned).length;
 
   // Pig avatar placeholder
