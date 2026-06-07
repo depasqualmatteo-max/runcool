@@ -246,6 +246,11 @@ export default function ProfiloScreen() {
   const displayLogs = isOwner ? state.logs : otherLogs;
   const medals = computeMedals(displayLogs, displayHearts, rankCounts);
   const earnedCount = medals.filter(m => m.earned).length;
+  // Le medaglie di classifica (oro/argento/bronzo) appaiono solo se guadagnate
+  const RANK_MEDAL_PREFIX = ['g_', 's_', 'b_'];
+  const visibleMedals = medals.filter(m =>
+    m.earned || !RANK_MEDAL_PREFIX.some(p => m.id.startsWith(p))
+  );
   const stats = computeStats(displayLogs);
 
   const pigBg = PIG_BACKGROUNDS[0];
@@ -428,7 +433,7 @@ export default function ProfiloScreen() {
       {/* ─── Medaglie ─── */}
       <Text style={styles.sectionTitle}>Medaglie — {earnedCount}/{medals.length}</Text>
       <View style={styles.medalGrid}>
-        {medals.map(m => (
+        {visibleMedals.map(m => (
           <TouchableOpacity
             key={m.id}
             style={[styles.medalCircle, m.earned ? styles.medalEarned : styles.medalLocked]}
