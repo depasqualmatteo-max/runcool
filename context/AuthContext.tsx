@@ -1,6 +1,9 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
 import { registerForPushNotifications, sendPushNotification, isMondayAndNotSentYet } from '@/lib/notifications';
+
+const USER_CACHE_KEY = '@runcool_user_cache';
 
 export interface AuthUser {
   id: string;
@@ -49,16 +52,28 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const registering = useRef(false);
 
   useEffect(() => {
-    // Timeout di sicurezza: se getSession non risponde entro 6s, sblocca l'app
-    const safetyTimeout = setTimeout(() => setIsLoading(false), 6000);
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      clearTimeout(safetyTimeout);
-      if (session?.user) {
-        loadUserData(session.user.id, session.user.email!);
-      } else {
-        setIsLoading(false);
+    // 1. Leggi subito la cache locale → apre l'app istantaneamente
+    AsyncStorage.getItem(USER_CACHE_KEY).then((raw) => {
+      if (raw) {
+        try {
+          const cached = JSON.parse(raw) as AuthUser;
+          setUser(cached);
+        } catch {}
       }
+      // In ogni caso sblocca il loading (se c'è cache l'app si apre subito)
+      setIsLoading(false);
+
+      // 2. Verifica la sessione reale in background (aggiorna dati o forza logout)
+      supabase.auth.getSession().then(({ data: { session } }) => {
+        if (session?.user) {
+          loadUserData(session.user.id, session.user.email!);
+        } else {
+          // Nessuna sessione valida: pulisci cache e vai al login
+          AsyncStorage.removeItem(USER_CACHE_KEY);
+          setUser(null);
+          setClan(null);
+        }
+      });
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -67,6 +82,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (session?.user) {
           await loadUserData(session.user.id, session.user.email!);
         } else {
+          AsyncStorage.removeItem(USER_CACHE_KEY);
           setUser(null);
           setClan(null);
           setIsLoading(false);
@@ -78,7 +94,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   async function loadUserData(userId: string, email: string) {
-    setIsLoading(true);
     try {
       // Retry up to 3 times in case the trigger hasn't fired yet
       let profile = null;
@@ -91,7 +106,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (data) { profile = data; break; }
         await new Promise((r) => setTimeout(r, 600));
       }
-      if (!profile) { setIsLoading(false); return; }
+      if (!profile) { return; }
 
       const authUser: AuthUser = {
         id: userId,
@@ -101,6 +116,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         avatarUrl: profile.avatar_url ?? null,
       };
       setUser(authUser);
+      // Salva in cache per il prossimo avvio
+      AsyncStorage.setItem(USER_CACHE_KEY, JSON.stringify(authUser)).catch(() => {});
 
       if (profile.clan_id) {
         await loadClan(profile.clan_id);
@@ -119,9 +136,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       });
 
-    } finally {
-      setIsLoading(false);
-    }
+    } catch {}
   }
 
   async function sendWeeklyRecap(userId: string, clanId: string | null, myToken: string) {
