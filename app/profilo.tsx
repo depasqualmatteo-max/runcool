@@ -11,6 +11,7 @@ import { useApp } from '@/context/AppContext';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { getMentalityState } from '@/lib/mentality';
 import { WORKOUT_MAP } from '@/constants/workouts';
+import Svg, { Path, G, ClipPath, Rect, Defs } from 'react-native-svg';
 
 const SCREEN_W = Dimensions.get('window').width;
 
@@ -108,58 +109,35 @@ const PIG_BACKGROUNDS = ['#FFEAA7', '#DFE6E9', '#FAB1A0', '#81ECEC', '#A29BFE'];
 const PIG_FRAMES = ['#FFD700', '#C0C0C0', '#CD7F32', '#E84393', '#00CEC9'];
 const PIG_SKINS = ['🐷', '🐽', '🐖', '🐗', '🐾'];
 
-// ─── Cuore a 4 spicchi ──────────────────────────────────────────────────
-const HEART_W = 72;
-const BUMP_R = HEART_W / 4;
-const BUMP_D = BUMP_R * 2;
-const TRI_H = HEART_W * 0.52;
+// ─── Cuore a 4 spicchi (SVG) ────────────────────────────────────────────
+// Path SVG di un cuore centrato in viewBox 0 0 100 90
+const HEART_PATH = 'M50 85 C50 85 5 55 5 30 C5 15 15 5 30 5 C38 5 45 9 50 15 C55 9 62 5 70 5 C85 5 95 15 95 30 C95 55 50 85 50 85 Z';
 
 function HeartQuarters({ quarters }: { quarters: number }) {
-  const f = '#E8445A';
-  const e = '#e0e0e0';
-  const c = (n: number) => quarters >= n ? f : e;
+  const filled = '#E8445A';
+  const empty  = '#e0e0e0';
+  const c = (n: number) => quarters >= n ? filled : empty;
 
   return (
-    <View style={{ width: HEART_W, height: BUMP_D + TRI_H, alignItems: 'center' }}>
-      <View style={{ flexDirection: 'row', width: HEART_W }}>
-        <View style={{
-          width: BUMP_D, height: BUMP_D,
-          borderTopLeftRadius: BUMP_R, borderTopRightRadius: BUMP_R,
-          borderBottomLeftRadius: 2, borderBottomRightRadius: 0,
-          backgroundColor: c(1),
-        }} />
-        <View style={{
-          width: BUMP_D, height: BUMP_D,
-          borderTopLeftRadius: BUMP_R, borderTopRightRadius: BUMP_R,
-          borderBottomLeftRadius: 0, borderBottomRightRadius: 2,
-          backgroundColor: c(2),
-        }} />
-      </View>
-      <View style={{ flexDirection: 'row', width: HEART_W }}>
-        <View style={{
-          width: 0, height: 0,
-          borderTopWidth: TRI_H,
-          borderLeftWidth: HEART_W / 2,
-          borderRightWidth: 0,
-          borderBottomWidth: 0,
-          borderTopColor: c(3),
-          borderLeftColor: 'transparent',
-          borderRightColor: 'transparent',
-          borderBottomColor: 'transparent',
-        }} />
-        <View style={{
-          width: 0, height: 0,
-          borderTopWidth: TRI_H,
-          borderRightWidth: HEART_W / 2,
-          borderLeftWidth: 0,
-          borderBottomWidth: 0,
-          borderTopColor: c(4),
-          borderRightColor: 'transparent',
-          borderLeftColor: 'transparent',
-          borderBottomColor: 'transparent',
-        }} />
-      </View>
-    </View>
+    <Svg width={72} height={65} viewBox="0 0 100 90">
+      <Defs>
+        {/* 4 clip regions: top-left, top-right, bottom-left, bottom-right */}
+        <ClipPath id="tl"><Rect x="0"  y="0"  width="50" height="45" /></ClipPath>
+        <ClipPath id="tr"><Rect x="50" y="0"  width="50" height="45" /></ClipPath>
+        <ClipPath id="bl"><Rect x="0"  y="45" width="50" height="45" /></ClipPath>
+        <ClipPath id="br"><Rect x="50" y="45" width="50" height="45" /></ClipPath>
+      </Defs>
+      {/* Sfondo grigio (cuore completo) */}
+      <Path d={HEART_PATH} fill={empty} />
+      {/* Spicchio 1: top-left */}
+      <G clipPath="url(#tl)"><Path d={HEART_PATH} fill={c(1)} /></G>
+      {/* Spicchio 2: top-right */}
+      <G clipPath="url(#tr)"><Path d={HEART_PATH} fill={c(2)} /></G>
+      {/* Spicchio 3: bottom-left */}
+      <G clipPath="url(#bl)"><Path d={HEART_PATH} fill={c(3)} /></G>
+      {/* Spicchio 4: bottom-right */}
+      <G clipPath="url(#br)"><Path d={HEART_PATH} fill={c(4)} /></G>
+    </Svg>
   );
 }
 
