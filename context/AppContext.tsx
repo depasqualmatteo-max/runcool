@@ -16,8 +16,6 @@ export interface LogWorkoutParams {
   elevationMeters?: number;
   /** Se passato, usa queste calorie direttamente senza ricalcolare (usato da health import) */
   overrideCalories?: number;
-  /** Se passato, usa questi cuori direttamente (per corsa: km → cuori senza calorie) */
-  overrideHearts?: number;
 }
 
 interface AppContextValue {
@@ -94,7 +92,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   async function logDrink(drinkId: DrinkId, quantity: number) {
     if (!user) return;
     const drink = DRINK_MAP[drinkId];
-    const calories = drink.calories * quantity;
+    const calories = Math.round(drink.calories * quantity);
     // Usa heartsLost dalla definizione del drink × quantità (non calorie / 100)
     const heartsLost = Math.round(drink.heartsLost * quantity);
     const newHearts = Math.round(state.hearts - heartsLost);
@@ -125,43 +123,30 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
   async function logWorkout(params: LogWorkoutParams) {
     if (!user) return;
-    const { workoutId, durationMinutes, km, elevationMeters, overrideCalories, overrideHearts } = params;
+    const { workoutId, durationMinutes, km, elevationMeters, overrideCalories } = params;
     const workout = WORKOUT_MAP[workoutId];
 
     let calories = 0;
-    let heartsGained = 0;
 
-    if (overrideHearts != null && overrideHearts > 0) {
-      // Cuori già calcolati (es. corsa da import: km → cuori diretto)
-      heartsGained = overrideHearts;
-      calories = overrideCalories ?? 0;
-    } else if (overrideCalories != null && overrideCalories > 0) {
+    if (overrideCalories != null && overrideCalories > 0) {
       calories = overrideCalories;
-      heartsGained = calcHeartsGained(calories);
     } else {
-      // Calcolo manuale (log-workout screen)
-      // Corsa con directHeartsPerKm: cuori direttamente da km
-      if (workout.directHeartsPerKm && km && km > 0) {
-        heartsGained = Math.max(1, Math.floor(km * workout.directHeartsPerKm));
-        calories = Math.round((workout.calPerKm ?? 60) * km);
-      } else {
-        const isKmSport = workout.inputType === 'km' || workout.inputType === 'km_elevation';
-        if (isKmSport && km && km > 0) {
-          if (workout.inputType === 'km_elevation') {
-            calories = calcWalkingCalories(km, elevationMeters ?? 0);
-          } else {
-            calories = Math.round((workout.calPerKm ?? 60) * km);
-          }
-        } else if (durationMinutes && durationMinutes > 0) {
-          calories = Math.round((workout.calPerMin ?? 7) * durationMinutes);
+      const isKmSport = workout.inputType === 'km' || workout.inputType === 'km_elevation';
+      if (isKmSport && km && km > 0) {
+        if (workout.inputType === 'km_elevation') {
+          calories = calcWalkingCalories(km, elevationMeters ?? 0);
+        } else {
+          calories = Math.round((workout.calPerKm ?? 60) * km);
         }
-        if (calories === 0 && durationMinutes && durationMinutes > 0) {
-          calories = Math.round(7 * durationMinutes);
-        }
-        heartsGained = calcHeartsGained(calories);
+      } else if (durationMinutes && durationMinutes > 0) {
+        calories = Math.round((workout.calPerMin ?? 7) * durationMinutes);
+      }
+      if (calories === 0 && durationMinutes && durationMinutes > 0) {
+        calories = Math.round(7 * durationMinutes);
       }
     }
-    heartsGained = Math.round(heartsGained);
+
+    const heartsGained = calories > 0 ? calcHeartsGained(calories, workoutId) : 0;
     const newHearts = Math.round(state.hearts + heartsGained);
 
     const { data: logRow, error } = await supabase

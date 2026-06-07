@@ -153,9 +153,9 @@ export default function LogDrinkScreen() {
 
             <View style={styles.modalCalcBox}>
               <Text style={styles.modalCalcText}>
-                {bottQty} bott. × 600 kcal ÷ {bottPeople} 🐷 ={' '}
+                {bottQty} bott. × 720 kcal ÷ {bottPeople} 🐷 ={' '}
                 <Text style={{ fontWeight: '800', color: '#E8445A' }}>
-                  {Math.round((bottQty * 600) / bottPeople)} kcal
+                  {Math.round((bottQty * 720) / bottPeople)} kcal
                 </Text>
               </Text>
               <Text style={styles.modalCalcSub}>

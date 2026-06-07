@@ -21,25 +21,24 @@ export default function LogWorkoutScreen() {
 
   const selected = WORKOUTS.find((w) => w.id === selectedWorkout);
 
-  function calcPreviewCalories(): number {
-    if (!selected) return 0;
+  function calcPreview(): { calories: number; hearts: number } {
+    if (!selected) return { calories: 0, hearts: 0 };
+    let cal = 0;
     if (selected.inputType === 'duration') {
-      return (selected.calPerMin ?? 0) * duration;
-    }
-    if (selected.inputType === 'km') {
+      cal = Math.round((selected.calPerMin ?? 0) * duration);
+    } else if (selected.inputType === 'km') {
       const k = parseFloat(km) || 0;
-      return Math.round((selected.calPerKm ?? 75) * k);
-    }
-    if (selected.inputType === 'km_elevation') {
+      cal = Math.round((selected.calPerKm ?? 60) * k);
+    } else if (selected.inputType === 'km_elevation') {
       const k = parseFloat(km) || 0;
       const e = parseInt(elevation) || 0;
-      return calcWalkingCalories(k, e);
+      cal = calcWalkingCalories(k, e);
     }
-    return 0;
+    const hearts = cal > 0 ? calcHeartsGained(cal, selected.id) : 0;
+    return { calories: cal, hearts };
   }
 
-  const previewCalories = calcPreviewCalories();
-  const previewHearts = calcHeartsGained(previewCalories);
+  const { calories: previewCalories, hearts: previewHearts } = calcPreview();
 
   function isReadyToLog(): boolean {
     if (!selected) return false;
@@ -176,7 +175,7 @@ export default function LogWorkoutScreen() {
             </View>
           </View>
           <Text style={styles.formulaNote}>
-            Formula: 60 kcal/km + 0.5 kcal/m di dislivello
+            Formula: 35 kcal/km + 0.2 kcal/m di dislivello
           </Text>
         </>
       )}

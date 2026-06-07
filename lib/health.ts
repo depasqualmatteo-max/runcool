@@ -147,10 +147,10 @@ async function fetchHealthKitWorkouts(daysBack: number = 7): Promise<ImportedWor
         distanceKm: (() => {
           const dist = w.totalDistance;
           if (!dist?.quantity) return undefined;
-          let km = dist.quantity;
-          if (dist.unit === 'm') km = dist.quantity / 1000;
+          let km: number;
+          if (dist.unit === 'km') km = dist.quantity;
           else if (dist.unit === 'mi') km = dist.quantity * 1.60934;
-          // 'km' or unknown unit: use as-is
+          else km = dist.quantity / 1000; // default: HealthKit restituisce metri
           return Math.round(km * 100) / 100;
         })(),
         mappedWorkoutId: mapped?.id ?? null,
@@ -205,6 +205,7 @@ async function initHealthConnect(): Promise<boolean> {
     step = 'requestPermission';
     const perms = [
       { accessType: 'read', recordType: 'ExerciseSession' },
+      { accessType: 'read', recordType: 'ActiveCaloriesBurned' },
       { accessType: 'read', recordType: 'TotalCaloriesBurned' },
       { accessType: 'read', recordType: 'Distance' },
       { accessType: 'read', recordType: 'ElevationGained' },
@@ -236,7 +237,7 @@ async function initHealthConnect(): Promise<boolean> {
 async function fetchHealthConnectWorkouts(daysBack: number = 7): Promise<ImportedWorkout[]> {
   if (Platform.OS !== 'android') return [];
   try {
-    const { readRecords } = require('react-native-health-connect');
+    const { readRecords, aggregateRecord } = require('react-native-health-connect');
     const startDate = new Date();
     startDate.setDate(startDate.getDate() - daysBack);
 
@@ -248,107 +249,63 @@ async function fetchHealthConnectWorkouts(daysBack: number = 7): Promise<Importe
       },
     });
 
-    // Leggi calorie aggregate per time range
-    type TimeRecord = { startTime: string; endTime: string; value: number };
-    const caloriesRecordsList: TimeRecord[] = [];
-    try {
-      const { records: cRecs } = await readRecords('TotalCaloriesBurned', {
-        timeRangeFilter: {
-          operator: 'between',
-          startTime: startDate.toISOString(),
-          endTime: new Date().toISOString(),
-        },
-      });
-      for (const cr of cRecs) {
-        caloriesRecordsList.push({
-          startTime: cr.startTime,
-          endTime: cr.endTime,
-          value: cr.energy?.inKilocalories ?? 0,
-        });
-      }
-    } catch (_) {}
-
-    // Leggi distanza per time range
-    const distanceRecordsList: TimeRecord[] = [];
-    try {
-      const { records: dRecs } = await readRecords('Distance', {
-        timeRangeFilter: {
-          operator: 'between',
-          startTime: startDate.toISOString(),
-          endTime: new Date().toISOString(),
-        },
-      });
-      for (const dr of dRecs) {
-        distanceRecordsList.push({
-          startTime: dr.startTime,
-          endTime: dr.endTime,
-          value: dr.distance?.inKilometers ?? 0,
-        });
-      }
-    } catch (_) {}
-
-    // Leggi dislivello per time range
-    const elevationRecordsList: TimeRecord[] = [];
-    try {
-      const { records: eRecs } = await readRecords('ElevationGained', {
-        timeRangeFilter: {
-          operator: 'between',
-          startTime: startDate.toISOString(),
-          endTime: new Date().toISOString(),
-        },
-      });
-      for (const er of eRecs) {
-        elevationRecordsList.push({
-          startTime: er.startTime,
-          endTime: er.endTime,
-          value: er.elevation?.inMeters ?? 0,
-        });
-      }
-    } catch (_) {}
-
-    // Funzione per sommare records che si sovrappongono con una sessione
-    function sumOverlapping(records: TimeRecord[], sessionStart: Date, sessionEnd: Date): number {
-      let total = 0;
-      for (const r of records) {
-        const rStart = new Date(r.startTime).getTime();
-        const rEnd = new Date(r.endTime).getTime();
-        const sStart = sessionStart.getTime();
-        const sEnd = sessionEnd.getTime();
-        // Il record si sovrappone alla sessione?
-        if (rStart < sEnd && rEnd > sStart) {
-          total += r.value;
-        }
-      }
-      return total;
+    // Helper: aggrega un singolo record type per un time range
+    async function safeAggregate(recordType: string, timeRangeFilter: any): Promise<any> {
+      try { return await aggregateRecord({ recordType, timeRangeFilter }); }
+      catch (_) { return null; }
     }
 
-    const workouts: ImportedWorkout[] = (sessions || []).map((s: any) => {
-      const start = new Date(s.startTime);
-      const end = new Date(s.endTime);
-      const durationMinutes = Math.round((end.getTime() - start.getTime()) / 60000);
-      const exerciseType = s.exerciseType ?? 0;
-      const mapped = mapHealthConnectType(exerciseType);
+    // Per ogni sessione, aggrega calorie/distanza/dislivello in parallelo
+    const workouts: ImportedWorkout[] = await Promise.all(
+      (sessions || []).map(async (s: any) => {
+        const start = new Date(s.startTime);
+        const end = new Date(s.endTime);
+        const durationMinutes = Math.round((end.getTime() - start.getTime()) / 60000);
+        const exerciseType = s.exerciseType ?? 0;
+        const mapped = mapHealthConnectType(exerciseType);
 
-      const calories = Math.round(sumOverlapping(caloriesRecordsList, start, end));
-      const rawDist = sumOverlapping(distanceRecordsList, start, end);
-      const distanceKm = rawDist > 0 ? rawDist : undefined;
-      const rawElev = sumOverlapping(elevationRecordsList, start, end);
-      const elevationMeters = rawElev > 0 ? Math.round(rawElev) : undefined;
+        const timeRange = {
+          operator: 'between' as const,
+          startTime: s.startTime,
+          endTime: s.endTime,
+        };
 
-      return {
-        id: s.metadata?.id || `hc_${start.getTime()}`,
-        name: mapped?.name || s.title || `Esercizio tipo ${exerciseType}`,
-        workoutType: String(exerciseType),
-        startDate: start,
-        endDate: end,
-        durationMinutes,
-        caloriesBurned: calories,
-        distanceKm: distanceKm ? Math.round(distanceKm * 100) / 100 : undefined,
-        elevationMeters,
-        mappedWorkoutId: mapped?.id ?? null,
-        mappedWorkoutName: mapped?.name || s.title || 'Allenamento',
-      };
-    });
+        // Fetch calorie, distanza, dislivello in parallelo
+        const [activeCalAgg, totalCalAgg, distAgg, elevAgg] = await Promise.all([
+          safeAggregate('ActiveCaloriesBurned', timeRange),
+          safeAggregate('TotalCaloriesBurned', timeRange),
+          safeAggregate('Distance', timeRange),
+          safeAggregate('ElevationGained', timeRange),
+        ]);
+
+        // Calorie: preferisci ActiveCalories, fallback TotalCalories
+        const activeCal = activeCalAgg?.ACTIVE_CALORIES_TOTAL?.inKilocalories ?? 0;
+        const totalCal = totalCalAgg?.ENERGY_TOTAL?.inKilocalories ?? 0;
+        const calories = Math.round(activeCal > 0 ? activeCal : totalCal);
+
+        // Distanza
+        const km = distAgg?.DISTANCE?.inKilometers ?? 0;
+        const distanceKm = km > 0 ? Math.round(km * 100) / 100 : undefined;
+
+        // Dislivello
+        const m = elevAgg?.ELEVATION_GAINED_TOTAL?.inMeters ?? 0;
+        const elevationMeters = m > 0 ? Math.round(m) : undefined;
+
+        return {
+          id: s.metadata?.id || `hc_${start.getTime()}`,
+          name: mapped?.name || s.title || `Esercizio tipo ${exerciseType}`,
+          workoutType: String(exerciseType),
+          startDate: start,
+          endDate: end,
+          durationMinutes,
+          caloriesBurned: calories,
+          distanceKm,
+          elevationMeters,
+          mappedWorkoutId: mapped?.id ?? null,
+          mappedWorkoutName: mapped?.name || s.title || 'Allenamento',
+        };
+      })
+    );
 
     return workouts;
   } catch (e: any) {

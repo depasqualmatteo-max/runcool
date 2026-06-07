@@ -10,7 +10,7 @@ export const WORKOUTS: WorkoutDefinition[] = [
   { id: 'tennis',    name: 'Tennis',    icon: '🎾', inputType: 'duration', calPerMin: 7  },
   { id: 'padel',     name: 'Padel',     icon: '🏓', inputType: 'duration', calPerMin: 7  },
   { id: 'calcetto',  name: 'Calcetto',  icon: '⚽', inputType: 'duration', calPerMin: 9  },
-  { id: 'pilates',   name: 'Pilates',   icon: '🧘', inputType: 'duration', calPerMin: 5  },
+  { id: 'pilates',   name: 'Pilates',   icon: '🧘', inputType: 'duration', calPerMin: 4  },
   { id: 'nuoto',     name: 'Nuoto',     icon: '🏊', inputType: 'duration', calPerMin: 10 },
   { id: 'ciclismo',  name: 'Ciclismo',  icon: '🚴', inputType: 'duration', calPerMin: 9  },
   { id: 'boxe',      name: 'Boxe',      icon: '🥊', inputType: 'duration', calPerMin: 11 },
@@ -23,7 +23,7 @@ export const WORKOUT_MAP: Record<WorkoutId, WorkoutDefinition> = Object.fromEntr
 
 export const DURATION_OPTIONS = [15, 30, 45, 60, 90, 120];
 
-// Ridotto rispetto al Naismith reale: max 7 cuori anche per un'escursione intera
+// Camminata: 35 cal/km + 0.2 cal/m dislivello, max 700
 export function calcWalkingCalories(km: number, elevationMeters: number): number {
   return Math.min(Math.round(35 * km + 0.2 * elevationMeters), 700);
 }

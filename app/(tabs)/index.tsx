@@ -1,70 +1,185 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
+import { supabase } from '@/lib/supabase';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
+import { isHealthAvailable } from '@/lib/health';
+import { UserAvatar } from '@/components/UserAvatar';
+import { checkAndAwardMentality } from '@/lib/mentality';
 
-const HEART_DISPLAY_MAX = 10;
-
-function ScoreRow({ score }: { score: number }) {
-  if (score === 0) {
-    return <View style={styles.heartsRow}><Text style={styles.heartEmpty}>🤍</Text></View>;
-  }
-  if (score < 0) {
-    const count = Math.min(Math.abs(score), HEART_DISPLAY_MAX);
-    return (
-      <View style={styles.heartsRow}>
-        {Array.from({ length: count }).map((_, i) => <Text key={i} style={styles.heartBroken}>💔</Text>)}
-        {Math.abs(score) > HEART_DISPLAY_MAX && (
-          <Text style={styles.heartOverflow}>+{Math.abs(score) - HEART_DISPLAY_MAX}</Text>
-        )}
-      </View>
-    );
-  }
-  const count = Math.min(score, HEART_DISPLAY_MAX);
-  return (
-    <View style={styles.heartsRow}>
-      {Array.from({ length: count }).map((_, i) => <Text key={i} style={styles.heartFull}>❤️</Text>)}
-      {score > HEART_DISPLAY_MAX && (
-        <Text style={styles.heartOverflow}>+{score - HEART_DISPLAY_MAX}</Text>
-      )}
-    </View>
-  );
+function getMotivationalPhrase(hearts: number): string {
+  if (hearts <= -50) return 'Situazione critica... il fegato chiede pietà';
+  if (hearts <= -25) return 'Il divano ti sta vincendo... reagisci!';
+  if (hearts <= -10) return 'Hai un bel debito da ripagare — corri!';
+  if (hearts < 0) return 'Sei in rosso — una corsetta e torni in pari';
+  if (hearts === 0) return 'Parti da zero — fai sport!';
+  if (hearts < 10) return 'Buon inizio, continua così!';
+  if (hearts < 25) return 'Sei in forma — il maialino è fiero di te';
+  if (hearts < 50) return 'Macchina da guerra! Inarrestabile';
+  if (hearts < 100) return 'Leggenda vivente — sei un esempio per tutti';
+  return 'SEI UN DIO DEL RUNNING! Nessuno ti ferma!';
 }
 
 export default function DashboardScreen() {
   const { state } = useApp();
   const { user, clan } = useAuth();
   const router = useRouter();
+  const [tandem, setTandem] = useState<{ name: string; members: { id: string; username: string; hearts: number; avatarUrl: string | null }[] } | null>(null);
+
+  useEffect(() => {
+    if (!user) return;
+    supabase.from('profiles').select('tandem_id').eq('id', user.id).single().then(async ({ data }) => {
+      if (!data?.tandem_id) return;
+      const { data: t } = await supabase.from('tandems').select('name').eq('id', data.tandem_id).single();
+      const { data: members } = await supabase.from('profiles').select('id, username, hearts, avatar_url').eq('tandem_id', data.tandem_id);
+      if (t) setTandem({ name: t.name, members: (members ?? []).map(m => ({ id: m.id, username: m.username, hearts: m.hearts, avatarUrl: m.avatar_url ?? null })) });
+    });
+  }, [user]);
 
   const today = format(new Date(), 'yyyy-MM-dd');
   const todayLogs = state.logs.filter((l) => l.timestamp.startsWith(today));
   const todayDrinks = todayLogs.filter((l) => l.type === 'drink');
   const todayWorkouts = todayLogs.filter((l) => l.type === 'workout');
+  const todayDrinkHearts = todayDrinks.reduce((s, l) => s + (l.type === 'drink' ? l.heartsLost : 0), 0);
+  const todayWorkoutHearts = todayWorkouts.reduce((s, l) => s + (l.type === 'workout' ? l.heartsGained : 0), 0);
   const scoreColor = state.hearts > 0 ? '#E8445A' : state.hearts < 0 ? '#ff3b30' : '#aaa';
 
-  const clanScore = clan
-    ? clan.members.reduce((sum, m) => sum + m.hearts, 0)
-    : null;
+  const clanScore = clan ? clan.members.reduce((sum, m) => sum + Math.round(m.hearts), 0) : null;
+  const tandemScore = tandem ? tandem.members.reduce((s, m) => s + Math.round(m.hearts), 0) : 0;
+
+  // ─── Mentality daily reward ───
+  const [mentalityBanner, setMentalityBanner] = useState<string | null>(null);
+  const bannerOpacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!user) return;
+    checkAndAwardMentality().then(async ({ awarded, newQuarters, fullHeart }) => {
+      if (!awarded) return;
+      if (fullHeart) {
+        // +1 cuore intero → aggiorna DB
+        const { data: prof } = await supabase.from('profiles').select('hearts').eq('id', user.id).single();
+        if (prof) {
+          const newH = Math.round(prof.hearts) + 1;
+          await supabase.from('profiles').update({ hearts: newH }).eq('id', user.id);
+        }
+        setMentalityBanner('Mentality 🧠 +1 ❤️ completo!');
+      } else {
+        setMentalityBanner(`Mentality 🧠 +¼ ❤️  (${newQuarters}/4)`);
+      }
+      // Animazione banner
+      Animated.sequence([
+        Animated.timing(bannerOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+        Animated.delay(2500),
+        Animated.timing(bannerOpacity, { toValue: 0, duration: 600, useNativeDriver: true }),
+      ]).start(() => setMentalityBanner(null));
+    }).catch(() => {});
+  }, [user?.id]);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
-      {/* Hero score */}
+      {/* Mentality banner */}
+      {mentalityBanner && (
+        <Animated.View style={[styles.mentalityBanner, { opacity: bannerOpacity }]}>
+          <Text style={styles.mentalityBannerText}>{mentalityBanner}</Text>
+        </Animated.View>
+      )}
+
+      {/* 1. Score card — compatta */}
       <View style={styles.heroCard}>
         <Text style={styles.hello}>Ciao, {user?.username} 🐷</Text>
-        <Text style={styles.heartsLabel}>La tua birresponsabilità</Text>
-        <Text style={[styles.heartsNumber, { color: scoreColor }]}>
-          {state.hearts > 0 ? `+${state.hearts}` : state.hearts}
-        </Text>
-        <ScoreRow score={state.hearts} />
-        {state.hearts < 0 && <Text style={styles.debtLabel}>Hai un debito da ripagare — corri! 😅</Text>}
-        {state.hearts === 0 && <Text style={styles.debtLabel}>Parti da zero — fai sport!</Text>}
-        {state.hearts > 0 && <Text style={styles.debtLabel}>Sei virtualmente sobrio 💪</Text>}
+        <View style={styles.scoreRow}>
+          <Text style={styles.heartBig}>{state.hearts >= 0 ? '❤️' : '💔'}</Text>
+          <Text style={[styles.heartsNumber, { color: scoreColor }]}>
+            {state.hearts > 0 ? `+${Math.round(state.hearts)}` : Math.round(state.hearts)}
+          </Text>
+        </View>
+        <Text style={styles.motivational}>{getMotivationalPhrase(state.hearts)}</Text>
       </View>
 
-      {/* Clan score */}
+      {/* 2. CTA + contatori oggi */}
+      <View style={styles.ctaRow}>
+        <TouchableOpacity
+          style={[styles.ctaButton, { backgroundColor: '#FF9800' }]}
+          onPress={() => router.push('/(tabs)/two')}
+        >
+          <Text style={styles.ctaIcon}>🐷</Text>
+          <Text style={styles.ctaText}>Hai bevuto?</Text>
+          <View style={styles.ctaBadge}>
+            <Text style={styles.ctaBadgeText}>
+              {todayDrinks.length > 0 ? `${todayDrinks.length} oggi  -${todayDrinkHearts} ❤️` : 'Nessuno oggi'}
+            </Text>
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[styles.ctaButton, { backgroundColor: '#2196F3' }]}
+          onPress={() => router.push('/(tabs)/log-workout')}
+        >
+          <Text style={styles.ctaIcon}>🏃</Text>
+          <Text style={styles.ctaText}>Hai corso?</Text>
+          <View style={styles.ctaBadge}>
+            <Text style={styles.ctaBadgeText}>
+              {todayWorkouts.length > 0 ? `${todayWorkouts.length} oggi  +${todayWorkoutHearts} ❤️` : 'Nessuno oggi'}
+            </Text>
+          </View>
+        </TouchableOpacity>
+      </View>
+
+      {/* Importa da Health */}
+      {isHealthAvailable() && (
+        <TouchableOpacity
+          style={styles.healthBtn}
+          onPress={() => router.push('/(tabs)/health-import')}
+        >
+          <Text style={styles.healthBtnIcon}>{Platform.OS === 'ios' ? '🍎' : '💚'}</Text>
+          <Text style={styles.healthBtnText}>
+            Importa da {Platform.OS === 'ios' ? 'Apple Health' : 'Google Fit'}
+          </Text>
+        </TouchableOpacity>
+      )}
+
+      {/* 3. Tandem card — diagonale */}
+      {tandem && tandem.members.length >= 2 && (
+        <>
+          <Text style={styles.sectionTitle}>Il tuo tandem</Text>
+          <View style={styles.tandemCard}>
+            {/* Punteggio totale tandem */}
+            <View style={styles.tandemHeader}>
+              <Text style={styles.tandemName}>👥 {tandem.name}</Text>
+              <Text style={[styles.tandemTotal, { color: tandemScore >= 0 ? '#9C27B0' : '#ff3b30' }]}>
+                {tandemScore > 0 ? '+' : ''}{tandemScore} ❤️
+              </Text>
+            </View>
+            {/* Due metà con diagonale */}
+            <View style={styles.tandemBody}>
+              {/* Membro sinistro */}
+              <TouchableOpacity style={styles.tandemHalf} onPress={() => router.push(tandem.members[0].id === user?.id ? '/profilo' : `/profilo?userId=${tandem.members[0].id}` as any)}>
+                <UserAvatar avatarUrl={tandem.members[0].avatarUrl} isMe={tandem.members[0].id === user?.id} size={54} />
+                <Text style={styles.tandemMemberName} numberOfLines={1}>{tandem.members[0].username}</Text>
+                <Text style={[styles.tandemMemberScore, { color: tandem.members[0].hearts >= 0 ? '#9C27B0' : '#ff3b30' }]}>
+                  {tandem.members[0].hearts > 0 ? '+' : ''}{Math.round(tandem.members[0].hearts)}
+                </Text>
+              </TouchableOpacity>
+              {/* Separatore diagonale */}
+              <View style={styles.tandemDiagonalContainer}>
+                <View style={styles.tandemDiagonal} />
+              </View>
+              {/* Membro destro */}
+              <TouchableOpacity style={styles.tandemHalf} onPress={() => router.push(tandem.members[1].id === user?.id ? '/profilo' : `/profilo?userId=${tandem.members[1].id}` as any)}>
+                <UserAvatar avatarUrl={tandem.members[1].avatarUrl} isMe={tandem.members[1].id === user?.id} size={54} />
+                <Text style={styles.tandemMemberName} numberOfLines={1}>{tandem.members[1].username}</Text>
+                <Text style={[styles.tandemMemberScore, { color: tandem.members[1].hearts >= 0 ? '#9C27B0' : '#ff3b30' }]}>
+                  {tandem.members[1].hearts > 0 ? '+' : ''}{Math.round(tandem.members[1].hearts)}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </>
+      )}
+
+      {/* 4. Clan card — avatar circolari */}
       {clan && (
         <>
           <Text style={styles.sectionTitle}>Il tuo clan</Text>
@@ -73,73 +188,29 @@ export default function DashboardScreen() {
               <Text style={styles.clanName}>🏆 {clan.name}</Text>
               <Text style={styles.clanCode}>#{clan.code}</Text>
             </View>
-            <Text style={styles.clanScoreLabel}>Punteggio clan</Text>
-            <Text style={[styles.clanScore, { color: clanScore! >= 0 ? '#E8445A' : '#ff3b30' }]}>
-              {clanScore! > 0 ? `+${clanScore}` : clanScore}
+            <Text style={[styles.clanTotal, { color: clanScore! >= 0 ? '#E8445A' : '#ff3b30' }]}>
+              {clanScore! > 0 ? '+' : ''}{clanScore} ❤️
             </Text>
-            <View style={styles.membersRow}>
+            <View style={styles.clanMembersGrid}>
               {clan.members.map((m) => (
-                <View key={m.id} style={styles.memberBadge}>
-                  <Text style={styles.memberEmoji}>{m.id === user?.id ? '🐷' : '👤'}</Text>
-                  <Text style={styles.memberName}>{m.username}</Text>
-                  <Text style={[styles.memberScore, { color: m.hearts >= 0 ? '#E8445A' : '#ff3b30' }]}>
-                    {m.hearts > 0 ? `+${m.hearts}` : m.hearts}
+                <TouchableOpacity key={m.id} style={styles.clanMemberItem} onPress={() => router.push(m.id === user?.id ? '/profilo' : `/profilo?userId=${m.id}` as any)}>
+                  <UserAvatar avatarUrl={m.avatarUrl} isMe={m.id === user?.id} size={48} />
+                  <Text style={styles.clanMemberName} numberOfLines={1}>{m.username}</Text>
+                  <Text style={[styles.clanMemberScore, { color: m.hearts >= 0 ? '#E8445A' : '#ff3b30' }]}>
+                    {m.hearts > 0 ? '+' : ''}{Math.round(m.hearts)}
                   </Text>
-                </View>
+                </TouchableOpacity>
               ))}
             </View>
           </View>
         </>
       )}
 
-      {/* Today stats */}
-      <Text style={styles.sectionTitle}>Oggi</Text>
-      <View style={styles.statsRow}>
-        <View style={[styles.statCard, { borderColor: '#FF9800' }]}>
-          <Text style={styles.statIcon}>🐷</Text>
-          <Text style={styles.statValue}>{todayDrinks.length}</Text>
-          <Text style={styles.statLabel}>Drink</Text>
-          {todayDrinks.length > 0 && (
-            <Text style={styles.statSub}>
-              -{todayDrinks.reduce((s, l) => s + (l.type === 'drink' ? l.heartsLost : 0), 0)} ❤️
-            </Text>
-          )}
-        </View>
-        <View style={[styles.statCard, { borderColor: '#2196F3' }]}>
-          <Text style={styles.statIcon}>🏃</Text>
-          <Text style={styles.statValue}>{todayWorkouts.length}</Text>
-          <Text style={styles.statLabel}>Sport</Text>
-          {todayWorkouts.length > 0 && (
-            <Text style={styles.statSub}>
-              +{todayWorkouts.reduce((s, l) => s + (l.type === 'workout' ? l.heartsGained : 0), 0)} ❤️
-            </Text>
-          )}
-        </View>
-      </View>
-
-      {/* CTA */}
-      <View style={styles.ctaRow}>
-        <TouchableOpacity
-          style={[styles.ctaButton, { backgroundColor: '#FF9800' }]}
-          onPress={() => router.push('/(tabs)/two')}
-        >
-          <Text style={styles.ctaIcon}>🐷</Text>
-          <Text style={styles.ctaText}>Hai bevuto?</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={[styles.ctaButton, { backgroundColor: '#2196F3' }]}
-          onPress={() => router.push('/(tabs)/log-workout')}
-        >
-          <Text style={styles.ctaIcon}>🏃</Text>
-          <Text style={styles.ctaText}>Hai corso?</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Recent */}
+      {/* 5. Log recenti — invariato */}
       {state.logs.length > 0 && (
         <>
           <Text style={styles.sectionTitle}>Ultimi log</Text>
-          {state.logs.slice(0, 3).map((log) => {
+          {state.logs.slice(0, 5).map((log) => {
             const isWorkout = log.type === 'workout';
             return (
               <View key={log.id} style={styles.recentCard}>
@@ -170,69 +241,107 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f7f7f7' },
   content: { padding: 20, paddingBottom: 40 },
 
+  // Mentality banner
+  mentalityBanner: {
+    backgroundColor: '#E8F5E9', borderRadius: 14, padding: 14,
+    marginBottom: 12, alignItems: 'center',
+    borderWidth: 2, borderColor: '#4CAF50',
+  },
+  mentalityBannerText: { fontSize: 15, fontWeight: '700', color: '#2e7d32' },
+
+  // 1. Hero score — compatta
   heroCard: {
-    backgroundColor: '#fff', borderRadius: 20, padding: 28,
-    alignItems: 'center', marginBottom: 24,
+    backgroundColor: '#fff', borderRadius: 20, padding: 20,
+    alignItems: 'center', marginBottom: 16,
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.07, shadowRadius: 8, elevation: 3,
   },
-  hello: { fontSize: 14, color: '#aaa', marginBottom: 8 },
-  heartsLabel: { fontSize: 13, color: '#aaa', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 4 },
-  heartsNumber: { fontSize: 72, fontWeight: '800', lineHeight: 80 },
-  heartsRow: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', marginTop: 8, gap: 2 },
-  heartFull: { fontSize: 24 },
-  heartBroken: { fontSize: 24 },
-  heartEmpty: { fontSize: 24 },
-  heartOverflow: { fontSize: 18, fontWeight: '700', color: '#E8445A', alignSelf: 'center', marginLeft: 4 },
-  debtLabel: { fontSize: 13, color: '#aaa', marginTop: 8 },
+  hello: { fontSize: 13, color: '#aaa', marginBottom: 6 },
+  scoreRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  heartBig: { fontSize: 40 },
+  heartsNumber: { fontSize: 56, fontWeight: '900', lineHeight: 64 },
+  motivational: { fontSize: 13, color: '#888', marginTop: 6, textAlign: 'center' },
 
   sectionTitle: {
     fontSize: 13, fontWeight: '700', color: '#aaa',
-    letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10,
+    letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10, marginTop: 8,
   },
 
+  // 2. CTA + contatori
+  ctaRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
+  ctaButton: {
+    flex: 1, borderRadius: 16, paddingVertical: 16, paddingHorizontal: 12,
+    alignItems: 'center',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.15, shadowRadius: 6, elevation: 4,
+  },
+  ctaIcon: { fontSize: 28, marginBottom: 4 },
+  ctaText: { color: '#fff', fontWeight: '700', fontSize: 15, marginBottom: 6 },
+  ctaBadge: {
+    backgroundColor: 'rgba(255,255,255,0.25)', borderRadius: 8,
+    paddingHorizontal: 10, paddingVertical: 4,
+  },
+  ctaBadgeText: { color: '#fff', fontSize: 11, fontWeight: '600' },
+
+  // Health
+  healthBtn: {
+    backgroundColor: '#fff', borderRadius: 14, padding: 14,
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+    marginBottom: 16, gap: 10,
+    borderWidth: 2, borderColor: '#4CAF50',
+  },
+  healthBtnIcon: { fontSize: 20 },
+  healthBtnText: { fontSize: 14, fontWeight: '700', color: '#2e7d32' },
+
+  // 3. Tandem — diagonale
+  tandemCard: {
+    backgroundColor: '#fff', borderRadius: 18, padding: 16, marginBottom: 20,
+    borderWidth: 2, borderColor: '#9C27B0',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06, shadowRadius: 6, elevation: 2,
+    overflow: 'hidden',
+  },
+  tandemHeader: {
+    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+    marginBottom: 16,
+  },
+  tandemName: { fontSize: 16, fontWeight: '800', color: '#1a1a1a' },
+  tandemTotal: { fontSize: 20, fontWeight: '900' },
+  tandemBody: {
+    flexDirection: 'row', alignItems: 'center',
+  },
+  tandemHalf: {
+    flex: 1, alignItems: 'center', paddingVertical: 8,
+  },
+  tandemMemberName: { fontSize: 13, fontWeight: '700', color: '#333', maxWidth: 100, textAlign: 'center', marginTop: 8 },
+  tandemMemberScore: { fontSize: 22, fontWeight: '900', marginTop: 2 },
+  tandemDiagonalContainer: {
+    width: 24, height: 100, alignItems: 'center', justifyContent: 'center',
+  },
+  tandemDiagonal: {
+    width: 2, height: 120, backgroundColor: '#E0C0E8',
+    transform: [{ rotate: '20deg' }],
+  },
+
+  // 4. Clan — avatar circolari
   clanCard: {
-    backgroundColor: '#fff', borderRadius: 16, padding: 20, marginBottom: 24,
+    backgroundColor: '#fff', borderRadius: 18, padding: 16, marginBottom: 20,
     borderWidth: 2, borderColor: '#FFD700',
     shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.06, shadowRadius: 6, elevation: 2,
   },
-  clanHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
-  clanName: { fontSize: 17, fontWeight: '800', color: '#1a1a1a' },
+  clanHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+  clanName: { fontSize: 16, fontWeight: '800', color: '#1a1a1a' },
   clanCode: { fontSize: 12, color: '#aaa', fontWeight: '600' },
-  clanScoreLabel: { fontSize: 11, color: '#aaa', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 2 },
-  clanScore: { fontSize: 40, fontWeight: '800', marginBottom: 12 },
-  membersRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
-  memberBadge: {
-    backgroundColor: '#f7f7f7', borderRadius: 10, padding: 10,
-    alignItems: 'center', minWidth: 80,
+  clanTotal: { fontSize: 28, fontWeight: '900', marginBottom: 14, textAlign: 'center' },
+  clanMembersGrid: {
+    flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 16,
   },
-  memberEmoji: { fontSize: 20, marginBottom: 2 },
-  memberName: { fontSize: 11, color: '#555', fontWeight: '600', marginBottom: 2 },
-  memberScore: { fontSize: 14, fontWeight: '800' },
+  clanMemberItem: { alignItems: 'center', width: 64 },
+  clanMemberName: { fontSize: 11, fontWeight: '600', color: '#555', textAlign: 'center', maxWidth: 64, marginTop: 6 },
+  clanMemberScore: { fontSize: 13, fontWeight: '800', marginTop: 1 },
 
-  statsRow: { flexDirection: 'row', gap: 12, marginBottom: 24 },
-  statCard: {
-    flex: 1, backgroundColor: '#fff', borderRadius: 16, padding: 16,
-    alignItems: 'center', borderWidth: 2,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
-  },
-  statIcon: { fontSize: 28, marginBottom: 4 },
-  statValue: { fontSize: 32, fontWeight: '800', color: '#1a1a1a' },
-  statLabel: { fontSize: 12, color: '#aaa', marginTop: 2 },
-  statSub: { fontSize: 12, color: '#888', marginTop: 4 },
-
-  ctaRow: { flexDirection: 'row', gap: 12, marginBottom: 32 },
-  ctaButton: {
-    flex: 1, borderRadius: 16, padding: 18,
-    alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15, shadowRadius: 6, elevation: 4,
-  },
-  ctaIcon: { fontSize: 28, marginBottom: 6 },
-  ctaText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-
+  // 5. Recent logs
   recentCard: {
     backgroundColor: '#fff', borderRadius: 12, padding: 14,
     flexDirection: 'row', alignItems: 'center', marginBottom: 8,

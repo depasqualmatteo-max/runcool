@@ -2,7 +2,7 @@
   "expo": {
     "name": "runcool",
     "slug": "runcool",
-    "version": "1.0.1",
+    "version": "1.0.3",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "runcool",
@@ -16,7 +16,13 @@
       "supportsTablet": true,
       "bundleIdentifier": "com.matteobruno5.runcool",
       "infoPlist": {
-        "ITSAppUsesNonExemptEncryption": false
+        "ITSAppUsesNonExemptEncryption": false,
+        "NSHealthShareUsageDescription": "RunCool legge i tuoi allenamenti per calcolare i cuori guadagnati 🐷",
+        "NSHealthUpdateUsageDescription": "RunCool registra i tuoi allenamenti"
+      },
+      "entitlements": {
+        "com.apple.developer.healthkit": true,
+        "com.apple.developer.healthkit.access": []
       }
     },
     "notification": {
@@ -34,7 +40,10 @@
       "predictiveBackGestureEnabled": false,
       "package": "com.matteobruno5.runcool",
       "permissions": [
-        "android.permission.RECORD_AUDIO"
+        "android.permission.health.READ_EXERCISE",
+        "android.permission.health.READ_TOTAL_CALORIES_BURNED",
+        "android.permission.health.READ_DISTANCE",
+        "android.permission.health.READ_ELEVATION_GAINED"
       ]
     },
     "plugins": [
@@ -47,7 +56,38 @@
         {
           "photosPermission": "RunCool usa la tua galleria per la foto profilo 🐷"
         }
-      ]
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/images/icon.png",
+          "color": "#FFD700",
+          "defaultChannel": "default",
+          "sounds": []
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "minSdkVersion": 26
+          }
+        }
+      ],
+      [
+        "@kingstinct/react-native-healthkit",
+        {
+          "NSHealthShareUsageDescription": "RunCool legge i tuoi allenamenti per calcolare i cuori guadagnati 🐷",
+          "NSHealthUpdateUsageDescription": "RunCool registra i tuoi allenamenti"
+        }
+      ],
+      [
+        "react-native-health-connect",
+        {
+          "requestPermissionsRationale": "RunCool usa Health Connect per importare i tuoi allenamenti e calcolare i cuori guadagnati 🐷"
+        }
+      ],
+      "./plugins/withHealthConnectDelegate.js"
     ],
     "updates": {
       "url": "https://u.expo.dev/730ff266-09d0-4b0a-94b0-9891663f40aa"

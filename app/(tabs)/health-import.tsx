@@ -18,44 +18,40 @@ const VALID_WORKOUT_IDS: string[] = [
   'padel', 'calcetto', 'pilates', 'nuoto', 'ciclismo', 'boxe', 'danza',
 ];
 
-// Calcola cuori direttamente usando le regole RunCool
-// Corsa: cuori = floor(km × 0.6) — diretto da km, senza calorie
-// Camminata: cuori via calorie (35×km + 0.2×dislivello)
-// Sport a durata: cuori via calorie (calPerMin × minuti)
-function calcRunCoolHearts(workout: ImportedWorkout): { hearts: number; calories: number; directKm: boolean } {
+// Import da Health: usa calorie da Health come fonte primaria
+// Se Health non ha calorie → ricalcola con formula RunCool da km/durata
+// Poi applica calPerHeart sport-specific per i cuori
+function calcRunCoolResult(workout: ImportedWorkout): { hearts: number; calories: number; usedKm: boolean; fromHealth: boolean } {
   const wId = workout.mappedWorkoutId;
-  if (!wId || !VALID_WORKOUT_IDS.includes(wId)) return { hearts: 0, calories: 0, directKm: false };
+  if (!wId || !VALID_WORKOUT_IDS.includes(wId)) return { hearts: 0, calories: 0, usedKm: false, fromHealth: false };
   const def = WORKOUT_MAP[wId as WorkoutId];
-  if (!def) return { hearts: 0, calories: 0, directKm: false };
+  if (!def) return { hearts: 0, calories: 0, usedKm: false, fromHealth: false };
 
+  // 1) Calorie da Health (fonte primaria per import)
+  if (workout.caloriesBurned > 0) {
+    const calories = Math.round(workout.caloriesBurned);
+    const hearts = calcHeartsGained(calories, wId);
+    return { hearts, calories, usedKm: false, fromHealth: true };
+  }
+
+  // 2) Fallback: ricalcola con formula RunCool
   const isKmSport = def.inputType === 'km' || def.inputType === 'km_elevation';
+  let calories = 0;
+  let usedKm = false;
 
-  // 1) Corsa con directHeartsPerKm: cuori direttamente da km
-  if (def.directHeartsPerKm && workout.distanceKm && workout.distanceKm > 0) {
-    const hearts = Math.max(1, Math.floor(workout.distanceKm * def.directHeartsPerKm));
-    return { hearts, calories: Math.round((def.calPerKm ?? 60) * workout.distanceKm), directKm: true };
-  }
-
-  // 2) Camminata/escursione: km + dislivello → calorie → cuori
   if (isKmSport && workout.distanceKm && workout.distanceKm > 0) {
+    usedKm = true;
     if (def.inputType === 'km_elevation') {
-      const cal = Math.round(calcWalkingCalories(workout.distanceKm, workout.elevationMeters ?? 0));
-      return { hearts: calcHeartsGained(cal), calories: cal, directKm: true };
+      calories = calcWalkingCalories(workout.distanceKm, workout.elevationMeters ?? 0);
+    } else {
+      calories = Math.round((def.calPerKm ?? 60) * workout.distanceKm);
     }
-    const cal = Math.round((def.calPerKm ?? 60) * workout.distanceKm);
-    return { hearts: calcHeartsGained(cal), calories: cal, directKm: true };
+  } else if (workout.durationMinutes > 0) {
+    calories = Math.round((def.calPerMin ?? 7) * workout.durationMinutes);
   }
 
-  // 3) Sport a durata
-  if (workout.durationMinutes > 0) {
-    const cpm = def.calPerMin ?? 7;
-    const cal = Math.round(cpm * workout.durationMinutes);
-    return { hearts: calcHeartsGained(cal), calories: cal, directKm: false };
-  }
-
-  // 4) Fallback: calorie da Health
-  const cal = Math.round(workout.caloriesBurned);
-  return { hearts: calcHeartsGained(cal), calories: cal, directKm: false };
+  const hearts = calories > 0 ? calcHeartsGained(calories, wId) : 0;
+  return { hearts, calories, usedKm, fromHealth: false };
 }
 
 export default function HealthImportScreen() {
@@ -117,17 +113,14 @@ export default function HealthImportScreen() {
       return;
     }
 
-    const { hearts, calories: rcCalories, directKm } = calcRunCoolHearts(workout);
-    const def = WORKOUT_MAP[workout.mappedWorkoutId as WorkoutId];
+    const { hearts, calories: rcCalories, fromHealth } = calcRunCoolResult(workout);
 
     const detailLines = [
       `${workout.name} — ${workout.durationMinutes} min`,
-      directKm && workout.distanceKm ? `Distanza: ${workout.distanceKm} km` : null,
+      workout.distanceKm ? `Distanza: ${workout.distanceKm} km` : null,
       workout.elevationMeters ? `Dislivello: ${workout.elevationMeters} m` : null,
-      def?.directHeartsPerKm && directKm
-        ? `${workout.distanceKm} km → +${hearts} ❤️`
-        : `${rcCalories} kcal → +${hearts} ❤️`,
-      directKm ? '(calcolato sui km)' : '(calcolato sulla durata)',
+      `${rcCalories} kcal → +${hearts} ❤️`,
+      fromHealth ? '(calorie da Health)' : '(calorie stimate)',
     ].filter(Boolean).join('\n');
 
     Alert.alert(
@@ -146,7 +139,6 @@ export default function HealthImportScreen() {
                 km: workout.distanceKm,
                 elevationMeters: workout.elevationMeters,
                 overrideCalories: rcCalories,
-                overrideHearts: hearts,
               });
               const newSet = new Set(imported).add(workout.id);
               await saveImported(newSet);
@@ -227,7 +219,7 @@ export default function HealthImportScreen() {
         workouts.map((w) => {
           const isImported = imported.has(w.id);
           const isImporting = importing === w.id;
-          const { hearts, calories: rcCalories, directKm } = calcRunCoolHearts(w);
+          const { hearts, calories: rcCalories, usedKm, fromHealth } = calcRunCoolResult(w);
           const isMappable = w.mappedWorkoutId && VALID_WORKOUT_IDS.includes(w.mappedWorkoutId);
 
           return (
@@ -255,15 +247,15 @@ export default function HealthImportScreen() {
                 )}
                 <View style={styles.stat}>
                   <Text style={styles.statValue}>{rcCalories}</Text>
-                  <Text style={styles.statLabel}>kcal RC</Text>
+                  <Text style={styles.statLabel}>{fromHealth ? 'kcal ✓' : 'kcal ~'}</Text>
                 </View>
                 <View style={styles.stat}>
                   <Text style={[styles.statValue, { color: '#E8445A' }]}>+{hearts}</Text>
                   <Text style={styles.statLabel}>❤️</Text>
                 </View>
                 <View style={styles.stat}>
-                  <Text style={[styles.statValue, { fontSize: 11 }]}>{directKm ? '📍 km' : '⏱ dur'}</Text>
-                  <Text style={styles.statLabel}>metodo</Text>
+                  <Text style={[styles.statValue, { fontSize: 11 }]}>{fromHealth ? '📱' : usedKm ? '📍' : '⏱'}</Text>
+                  <Text style={styles.statLabel}>{fromHealth ? 'health' : usedKm ? 'km' : 'dur'}</Text>
                 </View>
               </View>
 
