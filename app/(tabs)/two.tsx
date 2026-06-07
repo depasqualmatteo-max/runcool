@@ -37,11 +37,11 @@ export default function LogDrinkScreen() {
   }
 
   function confirmBott() {
-    // quota per persona: bottiglie / maialini (può essere frazionaria)
     const shareRatio = bottQty / bottPeople;
     setSelectedDrink('bottiglia_vino');
     setQuantity(shareRatio);
     setBottModal(false);
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 150);
   }
 
   async function handleLog() {
