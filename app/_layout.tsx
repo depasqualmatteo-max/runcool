@@ -49,24 +49,13 @@ export const unstable_settings = {
 
 SplashScreen.preventAutoHideAsync();
 
-// Nasconde il splash screen solo quando font E auth sono entrambi pronti
+// Nasconde il splash screen appena i font sono pronti
 function SplashGate({ fontsLoaded, children }: { fontsLoaded: boolean; children: React.ReactNode }) {
-  const { isLoading } = useAuth();
-  const [timedOut, setTimedOut] = React.useState(false);
-
-  // Timeout di sicurezza: dopo 4s nascondi lo splash comunque
   useEffect(() => {
-    const t = setTimeout(() => setTimedOut(true), 4000);
-    return () => clearTimeout(t);
-  }, []);
+    if (fontsLoaded) SplashScreen.hideAsync();
+  }, [fontsLoaded]);
 
-  const ready = fontsLoaded && (!isLoading || timedOut);
-
-  useEffect(() => {
-    if (ready) SplashScreen.hideAsync();
-  }, [ready]);
-
-  if (!ready) return <View style={{ flex: 1, backgroundColor: '#ffffff' }} />;
+  if (!fontsLoaded) return <View style={{ flex: 1, backgroundColor: '#ffffff' }} />;
   return <>{children}</>;
 }
 

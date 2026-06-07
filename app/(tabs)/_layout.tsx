@@ -1,6 +1,6 @@
 import React from 'react';
 import { Tabs, Redirect } from 'expo-router';
-import { Text, Platform, TouchableOpacity, View, StyleSheet } from 'react-native';
+import { Text, Platform, TouchableOpacity, View, StyleSheet, ActivityIndicator } from 'react-native';
 import { UserAvatar } from '@/components/UserAvatar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth } from '@/context/AuthContext';
@@ -49,7 +49,7 @@ export default function TabLayout() {
   const { user, isLoading } = useAuth();
   const insets = useSafeAreaInsets();
 
-  if (isLoading) return null;
+  if (isLoading) return <View style={{ flex: 1, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator size="large" color="#FFD700" /></View>;
   if (!user) return <Redirect href="/(auth)/login" />;
 
   const tabBarHeight = 60 + insets.bottom;
