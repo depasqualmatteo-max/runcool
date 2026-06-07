@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Modal, Alert, Platform,
@@ -12,6 +12,7 @@ import { DrinkId } from '@/types';
 export default function LogDrinkScreen() {
   const { state, logDrink } = useApp();
   const router = useRouter();
+  const scrollRef = useRef<ScrollView>(null);
   const [logging, setLogging] = useState(false);
   const [selectedDrink, setSelectedDrink] = useState<DrinkId | null>(null);
   const [quantity, setQuantity] = useState(1);
@@ -31,6 +32,7 @@ export default function LogDrinkScreen() {
     } else {
       setSelectedDrink(id);
       setQuantity(1);
+      setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
     }
   }
 
@@ -66,7 +68,7 @@ export default function LogDrinkScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView ref={scrollRef} style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.bigQuestion}>Cosa ti sei trincato, maialino? 🐷</Text>
 
       <View style={styles.grid}>
