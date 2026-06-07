@@ -229,7 +229,7 @@ export default function ClassificheScreen() {
                     ? <UserAvatar avatarUrl={r.avatarUrl} isMe={r.isMe} size={32} />
                     : <Text style={styles.rowAvatar}>{category === 'clan' ? '🏆' : '👥'}</Text>
                   }
-                  <Text style={[styles.rowName, r.isMe && styles.rowNameMe, isTappable && styles.tappableName]} numberOfLines={1}>
+                  <Text style={[styles.rowName, r.isMe && styles.rowNameMe]} numberOfLines={1}>
                     {r.name}{r.isMe ? ' (tu)' : ''}
                   </Text>
                   <Text style={[styles.rowScore, { color: r.score >= 0 ? '#E8445A' : '#ff3b30' }]}>
