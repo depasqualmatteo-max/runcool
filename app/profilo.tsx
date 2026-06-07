@@ -23,49 +23,81 @@ interface Medal {
   earned: boolean;
 }
 
-function computeMedals(logs: any[], hearts: number): Medal[] {
+// Conteggi ori/argenti/bronzi per categoria (singoli/tandem/clan)
+// gs=gold singoli, gt=gold tandem, gc=gold clan, ss=silver singoli, ecc.
+interface RankCounts {
+  gs: number; gt: number; gc: number;
+  ss: number; st: number; sc: number;
+  bs: number; bt: number; bc: number;
+}
+
+function computeMedals(logs: any[], hearts: number, rankCounts?: RankCounts): Medal[] {
   const drinks = logs.filter(l => l.type === 'drink');
   const workouts = logs.filter(l => l.type === 'workout');
   const totalKm = workouts.reduce((s, l) => s + (l.km ?? 0), 0);
   const totalElev = workouts.reduce((s, l) => s + (l.elevationMeters ?? 0), 0);
 
-  const drinksByDay: Record<string, number> = {};
-  drinks.forEach(d => {
-    const day = d.timestamp.slice(0, 10);
-    drinksByDay[day] = (drinksByDay[day] ?? 0) + 1;
-  });
-  const maxDrinksInDay = Math.max(0, ...Object.values(drinksByDay));
-
-  const now = new Date();
-  const weekAgo = new Date(now.getTime() - 7 * 86400000);
-  const workoutsThisWeek = workouts.filter(w => new Date(w.timestamp) >= weekAgo).length;
-
   // Giorni consecutivi con almeno 1 workout
   const workoutDays = new Set(workouts.map(w => w.timestamp.slice(0, 10)));
-  let streak = 0;
-  let maxStreak = 0;
+  const now = new Date();
+  let streak = 0, maxStreak = 0;
   for (let i = 0; i < 90; i++) {
     const d = new Date(now.getTime() - i * 86400000).toISOString().slice(0, 10);
     if (workoutDays.has(d)) { streak++; maxStreak = Math.max(maxStreak, streak); }
     else { streak = 0; }
   }
 
+  // Rank counts (oro/argento/bronzo per categoria)
+  const rc = rankCounts ?? { gs: 0, gt: 0, gc: 0, ss: 0, st: 0, sc: 0, bs: 0, bt: 0, bc: 0 };
+  const totalGold = rc.gs + rc.gt + rc.gc;
+  const totalSilver = rc.ss + rc.st + rc.sc;
+  const totalBronze = rc.bs + rc.bt + rc.bc;
+
   return [
-    { id: 'first_drink', icon: '🍺', name: 'Prima Birra', desc: 'Hai loggato il tuo primo drink', earned: drinks.length >= 1 },
-    { id: 'first_workout', icon: '👟', name: 'Primo Passo', desc: 'Hai loggato il tuo primo allenamento', earned: workouts.length >= 1 },
-    { id: 'maialino_doc', icon: '🐷', name: 'Maialino DOC', desc: '20 drink loggati in totale', earned: drinks.length >= 20 },
-    { id: 'atleta', icon: '💪', name: 'Atleta', desc: '20 sport loggati in totale', earned: workouts.length >= 20 },
-    { id: 'party_animal', icon: '🍾', name: 'Party Animal', desc: '3 drink in un solo giorno', earned: maxDrinksInDay >= 3 },
-    { id: 'in_forma', icon: '🔥', name: 'In Forma', desc: '5 sport in una settimana', earned: workoutsThisWeek >= 5 },
-    { id: 'virtuoso', icon: '🌟', name: 'Virtuoso', desc: 'Punteggio superiore a +15', earned: hearts >= 15 },
-    { id: 'debiti', icon: '💸', name: 'Troppo Bere', desc: 'Punteggio sceso sotto -5', earned: hearts <= -5 },
-    { id: 'maratoneta', icon: '🏅', name: 'Maratoneta', desc: '42 km totali corsi', earned: totalKm >= 42 },
-    { id: 'scalatore', icon: '🏔️', name: 'Scalatore', desc: '500m di dislivello totali', earned: totalElev >= 500 },
-    { id: 'centurione', icon: '🏛️', name: 'Centurione', desc: '100 attività totali', earned: (drinks.length + workouts.length) >= 100 },
-    { id: 'costante', icon: '📅', name: 'Costante', desc: '7 giorni consecutivi di sport', earned: maxStreak >= 7 },
-    { id: 'social_drinker', icon: '🥂', name: 'Social Drinker', desc: '50 drink loggati', earned: drinks.length >= 50 },
-    { id: 'iron_man', icon: '🦾', name: 'Iron Man', desc: '50 allenamenti loggati', earned: workouts.length >= 50 },
-    { id: 'leggenda', icon: '👑', name: 'Leggenda', desc: 'Punteggio superiore a +50', earned: hearts >= 50 },
+    // ─── Attività ───
+    { id: 'first_drink',    icon: '🍺', name: 'Prima Birra',    desc: 'Logga il tuo primo drink',             earned: drinks.length >= 1 },
+    { id: 'first_workout',  icon: '👟', name: 'Primo Passo',    desc: 'Logga il tuo primo allenamento',       earned: workouts.length >= 1 },
+    { id: 'maialino_doc',   icon: '🐷', name: 'Maialino DOC',   desc: '20 drink loggati in totale',           earned: drinks.length >= 20 },
+    { id: 'atleta',         icon: '💪', name: 'Atleta',          desc: '20 sport loggati in totale',           earned: workouts.length >= 20 },
+    { id: 'social_drinker', icon: '🥂', name: 'Social Drinker',  desc: '50 drink loggati',                    earned: drinks.length >= 50 },
+    { id: 'iron_man',       icon: '🦾', name: 'Iron Man',        desc: '50 allenamenti loggati',              earned: workouts.length >= 50 },
+    { id: 'centurione',     icon: '🏛️', name: 'Centurione',     desc: '100 attività totali',                  earned: (drinks.length + workouts.length) >= 100 },
+    { id: 'costante',       icon: '📅', name: 'Costante',        desc: '7 giorni consecutivi di sport',        earned: maxStreak >= 7 },
+    { id: 'maratoneta',     icon: '🏅', name: 'Maratoneta',      desc: '42 km totali corsi',                  earned: totalKm >= 42 },
+    { id: 'scalatore',      icon: '🏔️', name: 'Scalatore',      desc: '500m di dislivello totali',            earned: totalElev >= 500 },
+    { id: 'virtuoso',       icon: '🌟', name: 'Virtuoso',        desc: 'Punteggio superiore a +15',           earned: hearts >= 15 },
+    { id: 'leggenda',       icon: '👑', name: 'Leggenda',        desc: 'Punteggio superiore a +50',           earned: hearts >= 50 },
+    { id: 'debiti',         icon: '💸', name: 'Troppo Bere',     desc: 'Punteggio sceso sotto -10',           earned: hearts <= -10 },
+
+    // ─── Oro 🥇 ───
+    { id: 'g_sing_1',  icon: '🥇', name: 'Campione',           desc: '1° nei singoli a fine mese',            earned: rc.gs >= 1 },
+    { id: 'g_tand_1',  icon: '🥇', name: 'Coppia d\'Oro',      desc: '1° nel tandem a fine mese',             earned: rc.gt >= 1 },
+    { id: 'g_clan_1',  icon: '🥇', name: 'Branco Alpha',       desc: '1° nel clan a fine mese',               earned: rc.gc >= 1 },
+    { id: 'g_sing_6',  icon: '🏆', name: 'Dominatore',          desc: '6 volte 1° singoli',                   earned: rc.gs >= 6 },
+    { id: 'g_tand_6',  icon: '🏆', name: 'Tandem Invincibile',  desc: '6 volte 1° tandem',                   earned: rc.gt >= 6 },
+    { id: 'g_clan_6',  icon: '🏆', name: 'Clan Imbattibile',    desc: '6 volte 1° clan',                     earned: rc.gc >= 6 },
+    { id: 'g_12',      icon: '✨', name: 'Semestre d\'Oro',     desc: '12 ori totali (qualsiasi categoria)',   earned: totalGold >= 12 },
+    { id: 'g_24',      icon: '💎', name: 'Anno d\'Oro',         desc: '24 ori totali (qualsiasi categoria)',   earned: totalGold >= 24 },
+
+    // ─── Argento 🥈 ───
+    { id: 's_sing_1',  icon: '🥈', name: 'Vice Campione',       desc: '2° nei singoli a fine mese',           earned: rc.ss >= 1 },
+    { id: 's_tand_1',  icon: '🥈', name: 'Coppia d\'Argento',   desc: '2° nel tandem a fine mese',            earned: rc.st >= 1 },
+    { id: 's_clan_1',  icon: '🥈', name: 'Branco Beta',         desc: '2° nel clan a fine mese',              earned: rc.sc >= 1 },
+    { id: 's_sing_6',  icon: '🪙', name: 'Eterno Secondo',      desc: '6 volte 2° singoli',                  earned: rc.ss >= 6 },
+    { id: 's_tand_6',  icon: '🪙', name: 'Tandem d\'Argento',   desc: '6 volte 2° tandem',                   earned: rc.st >= 6 },
+    { id: 's_clan_6',  icon: '🪙', name: 'Clan d\'Argento',     desc: '6 volte 2° clan',                     earned: rc.sc >= 6 },
+    { id: 's_12',      icon: '🌙', name: 'Semestre d\'Argento', desc: '12 argenti totali',                    earned: totalSilver >= 12 },
+    { id: 's_24',      icon: '⚪', name: 'Anno d\'Argento',     desc: '24 argenti totali',                    earned: totalSilver >= 24 },
+
+    // ─── Bronzo 🥉 ───
+    { id: 'b_sing_1',  icon: '🥉', name: 'Sul Podio',           desc: '3° nei singoli a fine mese',           earned: rc.bs >= 1 },
+    { id: 'b_tand_1',  icon: '🥉', name: 'Coppia di Bronzo',    desc: '3° nel tandem a fine mese',            earned: rc.bt >= 1 },
+    { id: 'b_clan_1',  icon: '🥉', name: 'Branco Gamma',        desc: '3° nel clan a fine mese',              earned: rc.bc >= 1 },
+    { id: 'b_sing_6',  icon: '🔶', name: 'Veterano Singolo',    desc: '6 volte 3° singoli',                  earned: rc.bs >= 6 },
+    { id: 'b_tand_6',  icon: '🔶', name: 'Veterano Tandem',     desc: '6 volte 3° tandem',                   earned: rc.bt >= 6 },
+    { id: 'b_clan_6',  icon: '🔶', name: 'Veterano Clan',       desc: '6 volte 3° clan',                     earned: rc.bc >= 6 },
+    { id: 'b_12',      icon: '🟤', name: 'Semestre di Bronzo',  desc: '12 bronzi totali',                     earned: totalBronze >= 12 },
+    { id: 'b_24',      icon: '🗿', name: 'Anno di Bronzo',      desc: '24 bronzi totali',                     earned: totalBronze >= 24 },
   ];
 }
 
@@ -150,7 +182,20 @@ export default function ProfiloScreen() {
   const [editingName, setEditingName] = useState(false);
   const [newUsername, setNewUsername] = useState(user?.username ?? '');
   const [selectedMedal, setSelectedMedal] = useState<Medal | null>(null);
+  const [rankCounts, setRankCounts] = useState<RankCounts>({ gs: 0, gt: 0, gc: 0, ss: 0, st: 0, sc: 0, bs: 0, bt: 0, bc: 0 });
   const [mentalityQuarters, setMentalityQuarters] = useState(0);
+
+  // Carica rank counts (per medaglie classifica) — sia per proprio che per profilo pubblico
+  useEffect(() => {
+    const uid = isOwner ? user?.id : params.userId;
+    if (!uid) return;
+    supabase.from('profiles').select('rank_medals').eq('id', uid).single().then(({ data }) => {
+      if (data?.rank_medals) {
+        try { setRankCounts({ gs: 0, gt: 0, gc: 0, ss: 0, st: 0, sc: 0, bs: 0, bt: 0, bc: 0, ...data.rank_medals }); }
+        catch (_) {}
+      }
+    });
+  }, [isOwner, params.userId]);
 
   // Carica stato mentality (solo personale)
   useEffect(() => {
@@ -189,7 +234,7 @@ export default function ProfiloScreen() {
   const displayAvatar = isOwner ? user?.avatarUrl : profileData?.avatarUrl;
   const displayHearts = isOwner ? state.hearts : (profileData?.hearts ?? 0);
   const displayLogs = isOwner ? state.logs : otherLogs;
-  const medals = computeMedals(displayLogs, displayHearts);
+  const medals = computeMedals(displayLogs, displayHearts, rankCounts);
   const earnedCount = medals.filter(m => m.earned).length;
 
   // Pig avatar placeholder
