@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { isHealthAvailable } from '@/lib/health';
+import { UserAvatar } from '@/components/UserAvatar';
 
 function getMotivationalPhrase(hearts: number): string {
   if (hearts <= -50) return 'Situazione critica... il fegato chiede pietà';
@@ -21,31 +22,19 @@ function getMotivationalPhrase(hearts: number): string {
   return 'SEI UN DIO DEL RUNNING! Nessuno ti ferma!';
 }
 
-function getInitials(name: string): string {
-  return name.slice(0, 2).toUpperCase();
-}
-
-const AVATAR_COLORS = ['#E8445A', '#FF9800', '#9C27B0', '#2196F3', '#4CAF50', '#FF5722', '#607D8B', '#795548'];
-
-function avatarColor(name: string): string {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
-  return AVATAR_COLORS[Math.abs(hash) % AVATAR_COLORS.length];
-}
-
 export default function DashboardScreen() {
   const { state } = useApp();
   const { user, clan } = useAuth();
   const router = useRouter();
-  const [tandem, setTandem] = useState<{ name: string; members: { username: string; hearts: number }[] } | null>(null);
+  const [tandem, setTandem] = useState<{ name: string; members: { id: string; username: string; hearts: number; avatarUrl: string | null }[] } | null>(null);
 
   useEffect(() => {
     if (!user) return;
     supabase.from('profiles').select('tandem_id').eq('id', user.id).single().then(async ({ data }) => {
       if (!data?.tandem_id) return;
       const { data: t } = await supabase.from('tandems').select('name').eq('id', data.tandem_id).single();
-      const { data: members } = await supabase.from('profiles').select('username, hearts').eq('tandem_id', data.tandem_id);
-      if (t) setTandem({ name: t.name, members: members ?? [] });
+      const { data: members } = await supabase.from('profiles').select('id, username, hearts, avatar_url').eq('tandem_id', data.tandem_id);
+      if (t) setTandem({ name: t.name, members: (members ?? []).map(m => ({ id: m.id, username: m.username, hearts: m.hearts, avatarUrl: m.avatar_url ?? null })) });
     });
   }, [user]);
 
@@ -131,9 +120,7 @@ export default function DashboardScreen() {
             <View style={styles.tandemBody}>
               {/* Membro sinistro */}
               <View style={styles.tandemHalf}>
-                <View style={[styles.tandemAvatar, { backgroundColor: avatarColor(tandem.members[0].username) }]}>
-                  <Text style={styles.tandemAvatarText}>{getInitials(tandem.members[0].username)}</Text>
-                </View>
+                <UserAvatar avatarUrl={tandem.members[0].avatarUrl} isMe={tandem.members[0].id === user?.id} size={54} />
                 <Text style={styles.tandemMemberName} numberOfLines={1}>{tandem.members[0].username}</Text>
                 <Text style={[styles.tandemMemberScore, { color: tandem.members[0].hearts >= 0 ? '#9C27B0' : '#ff3b30' }]}>
                   {tandem.members[0].hearts > 0 ? '+' : ''}{Math.round(tandem.members[0].hearts)}
@@ -145,9 +132,7 @@ export default function DashboardScreen() {
               </View>
               {/* Membro destro */}
               <View style={styles.tandemHalf}>
-                <View style={[styles.tandemAvatar, { backgroundColor: avatarColor(tandem.members[1].username) }]}>
-                  <Text style={styles.tandemAvatarText}>{getInitials(tandem.members[1].username)}</Text>
-                </View>
+                <UserAvatar avatarUrl={tandem.members[1].avatarUrl} isMe={tandem.members[1].id === user?.id} size={54} />
                 <Text style={styles.tandemMemberName} numberOfLines={1}>{tandem.members[1].username}</Text>
                 <Text style={[styles.tandemMemberScore, { color: tandem.members[1].hearts >= 0 ? '#9C27B0' : '#ff3b30' }]}>
                   {tandem.members[1].hearts > 0 ? '+' : ''}{Math.round(tandem.members[1].hearts)}
@@ -173,9 +158,7 @@ export default function DashboardScreen() {
             <View style={styles.clanMembersGrid}>
               {clan.members.map((m) => (
                 <View key={m.id} style={styles.clanMemberItem}>
-                  <View style={[styles.clanAvatar, { backgroundColor: avatarColor(m.username) }]}>
-                    <Text style={styles.clanAvatarText}>{getInitials(m.username)}</Text>
-                  </View>
+                  <UserAvatar avatarUrl={m.avatarUrl} isMe={m.id === user?.id} size={48} />
                   <Text style={styles.clanMemberName} numberOfLines={1}>{m.username}</Text>
                   <Text style={[styles.clanMemberScore, { color: m.hearts >= 0 ? '#E8445A' : '#ff3b30' }]}>
                     {m.hearts > 0 ? '+' : ''}{Math.round(m.hearts)}
@@ -286,14 +269,7 @@ const styles = StyleSheet.create({
   tandemHalf: {
     flex: 1, alignItems: 'center', paddingVertical: 8,
   },
-  tandemAvatar: {
-    width: 54, height: 54, borderRadius: 27, alignItems: 'center', justifyContent: 'center',
-    marginBottom: 8,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15, shadowRadius: 4, elevation: 3,
-  },
-  tandemAvatarText: { color: '#fff', fontSize: 20, fontWeight: '800' },
-  tandemMemberName: { fontSize: 13, fontWeight: '700', color: '#333', maxWidth: 100, textAlign: 'center' },
+  tandemMemberName: { fontSize: 13, fontWeight: '700', color: '#333', maxWidth: 100, textAlign: 'center', marginTop: 8 },
   tandemMemberScore: { fontSize: 22, fontWeight: '900', marginTop: 2 },
   tandemDiagonalContainer: {
     width: 24, height: 100, alignItems: 'center', justifyContent: 'center',
@@ -318,14 +294,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 16,
   },
   clanMemberItem: { alignItems: 'center', width: 64 },
-  clanAvatar: {
-    width: 48, height: 48, borderRadius: 24, alignItems: 'center', justifyContent: 'center',
-    marginBottom: 6,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.12, shadowRadius: 3, elevation: 2,
-  },
-  clanAvatarText: { color: '#fff', fontSize: 16, fontWeight: '800' },
-  clanMemberName: { fontSize: 11, fontWeight: '600', color: '#555', textAlign: 'center', maxWidth: 64 },
+  clanMemberName: { fontSize: 11, fontWeight: '600', color: '#555', textAlign: 'center', maxWidth: 64, marginTop: 6 },
   clanMemberScore: { fontSize: 13, fontWeight: '800', marginTop: 1 },
 
   // 5. Recent logs
