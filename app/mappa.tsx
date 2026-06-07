@@ -40,8 +40,7 @@ export default function MappaScreen() {
   async function loadCountryData() {
     setLoading(true);
     try {
-      // Read logs from Supabase that have country_code and km > 0
-      // For now, also try to get location from device for recent workouts
+      // Tutti i workout con km > 0
       const { data: logs } = await supabase
         .from('logs')
         .select('km, country_code')
@@ -49,16 +48,19 @@ export default function MappaScreen() {
         .eq('type', 'workout')
         .gt('km', 0);
 
-      // Aggregate km per country
       const countryMap: Record<string, number> = {};
+      let kmWithoutCountry = 0;
+
       (logs ?? []).forEach((log: any) => {
         if (log.country_code) {
           countryMap[log.country_code] = (countryMap[log.country_code] ?? 0) + (log.km ?? 0);
+        } else {
+          kmWithoutCountry += (log.km ?? 0);
         }
       });
 
-      // If no country data in logs yet, try current location as demo
-      if (Object.keys(countryMap).length === 0) {
+      // Assegna i km senza country_code alla posizione attuale
+      if (kmWithoutCountry > 0) {
         try {
           const { status } = await Location.requestForegroundPermissionsAsync();
           if (status === 'granted') {
@@ -68,13 +70,7 @@ export default function MappaScreen() {
               longitude: loc.coords.longitude,
             });
             if (geo?.isoCountryCode) {
-              // Show current country with total km from all workouts without country
-              const totalKmNoCountry = (logs ?? [])
-                .filter((l: any) => !l.country_code)
-                .reduce((s: number, l: any) => s + (l.km ?? 0), 0);
-              if (totalKmNoCountry > 0) {
-                countryMap[geo.isoCountryCode] = totalKmNoCountry;
-              }
+              countryMap[geo.isoCountryCode] = (countryMap[geo.isoCountryCode] ?? 0) + kmWithoutCountry;
             }
           }
         } catch (_) {}
