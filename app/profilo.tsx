@@ -9,6 +9,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useApp } from '@/context/AppContext';
 import { useRouter, useLocalSearchParams } from 'expo-router';
+import { getMentalityState } from '@/lib/mentality';
 
 const SCREEN_W = Dimensions.get('window').width;
 
@@ -92,6 +93,13 @@ export default function ProfiloScreen() {
   const [editingName, setEditingName] = useState(false);
   const [newUsername, setNewUsername] = useState(user?.username ?? '');
   const [selectedMedal, setSelectedMedal] = useState<Medal | null>(null);
+  const [mentalityQuarters, setMentalityQuarters] = useState(0);
+
+  // Carica stato mentality (solo personale)
+  useEffect(() => {
+    if (!isOwner) return;
+    getMentalityState().then(({ quarters }) => setMentalityQuarters(quarters));
+  }, [isOwner]);
 
   // Carica profilo + log pubblico se non è il proprio
   useEffect(() => {
@@ -258,6 +266,37 @@ export default function ProfiloScreen() {
         </View>
       </View>
 
+      {/* ─── Mentality (solo personale) ─── */}
+      {isOwner && (
+        <View style={styles.mentalityCard}>
+          <View style={styles.mentalityHeader}>
+            <Text style={styles.mentalityTitle}>Mentality 🧠</Text>
+            <Text style={styles.mentalitySubtitle}>Apri l'app ogni giorno per guadagnare cuori</Text>
+          </View>
+          <View style={styles.mentalityBody}>
+            {/* Cuore a 4 spicchi */}
+            <View style={styles.heartContainer}>
+              <View style={styles.heartGrid}>
+                <View style={[styles.heartQuarter, styles.heartTL, mentalityQuarters >= 1 && styles.heartFilled]} />
+                <View style={[styles.heartQuarter, styles.heartTR, mentalityQuarters >= 2 && styles.heartFilled]} />
+                <View style={[styles.heartQuarter, styles.heartBL, mentalityQuarters >= 4 && styles.heartFilled]} />
+                <View style={[styles.heartQuarter, styles.heartBR, mentalityQuarters >= 3 && styles.heartFilled]} />
+              </View>
+            </View>
+            <View style={styles.mentalityInfo}>
+              <Text style={styles.mentalityProgress}>{mentalityQuarters}/4</Text>
+              <Text style={styles.mentalityHint}>
+                {mentalityQuarters === 0
+                  ? 'Apri domani per iniziare!'
+                  : mentalityQuarters < 3
+                    ? `Ancora ${4 - mentalityQuarters} giorni per +1 ❤️`
+                    : 'Ancora 1 giorno per +1 ❤️!'}
+              </Text>
+            </View>
+          </View>
+        </View>
+      )}
+
       {/* ─── Card Maialino Avatar ─── */}
       <Text style={styles.sectionTitle}>Il tuo maialino</Text>
       <View style={[styles.pigCard, { borderColor: pigFrame }]}>
@@ -389,6 +428,38 @@ const styles = StyleSheet.create({
     fontSize: 14, fontWeight: '700', color: '#1a1a1a',
     marginBottom: 10, marginTop: 8,
   },
+
+  // Mentality
+  mentalityCard: {
+    backgroundColor: '#fff', borderRadius: 18, padding: 20, marginBottom: 24,
+    borderWidth: 2, borderColor: '#4CAF50',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.06, shadowRadius: 6, elevation: 2,
+  },
+  mentalityHeader: { marginBottom: 16 },
+  mentalityTitle: { fontSize: 16, fontWeight: '800', color: '#1a1a1a' },
+  mentalitySubtitle: { fontSize: 12, color: '#888', marginTop: 2 },
+  mentalityBody: { flexDirection: 'row', alignItems: 'center', gap: 20 },
+  heartContainer: {
+    width: 64, height: 64, borderRadius: 32,
+    backgroundColor: '#f5f5f5', overflow: 'hidden',
+    borderWidth: 2, borderColor: '#e0e0e0',
+  },
+  heartGrid: {
+    flex: 1, flexDirection: 'row', flexWrap: 'wrap',
+  },
+  heartQuarter: {
+    width: '50%', height: '50%',
+    backgroundColor: '#f0f0f0',
+  },
+  heartTL: { borderRightWidth: 1, borderBottomWidth: 1, borderColor: '#e0e0e0' },
+  heartTR: { borderBottomWidth: 1, borderColor: '#e0e0e0' },
+  heartBL: { borderRightWidth: 1, borderColor: '#e0e0e0' },
+  heartBR: {},
+  heartFilled: { backgroundColor: '#E8445A' },
+  mentalityInfo: { flex: 1 },
+  mentalityProgress: { fontSize: 28, fontWeight: '900', color: '#E8445A' },
+  mentalityHint: { fontSize: 12, color: '#888', marginTop: 2 },
 
   // Card Maialino
   pigCard: {

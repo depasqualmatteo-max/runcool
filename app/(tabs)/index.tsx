@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Animated } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
@@ -8,6 +8,7 @@ import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
 import { isHealthAvailable } from '@/lib/health';
 import { UserAvatar } from '@/components/UserAvatar';
+import { checkAndAwardMentality } from '@/lib/mentality';
 
 function getMotivationalPhrase(hearts: number): string {
   if (hearts <= -50) return 'Situazione critica... il fegato chiede pietà';
@@ -49,8 +50,43 @@ export default function DashboardScreen() {
   const clanScore = clan ? clan.members.reduce((sum, m) => sum + Math.round(m.hearts), 0) : null;
   const tandemScore = tandem ? tandem.members.reduce((s, m) => s + Math.round(m.hearts), 0) : 0;
 
+  // ─── Mentality daily reward ───
+  const [mentalityBanner, setMentalityBanner] = useState<string | null>(null);
+  const bannerOpacity = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!user) return;
+    checkAndAwardMentality().then(async ({ awarded, newQuarters, fullHeart }) => {
+      if (!awarded) return;
+      if (fullHeart) {
+        // +1 cuore intero → aggiorna DB
+        const { data: prof } = await supabase.from('profiles').select('hearts').eq('id', user.id).single();
+        if (prof) {
+          const newH = Math.round(prof.hearts) + 1;
+          await supabase.from('profiles').update({ hearts: newH }).eq('id', user.id);
+        }
+        setMentalityBanner('Mentality 🧠 +1 ❤️ completo!');
+      } else {
+        setMentalityBanner(`Mentality 🧠 +¼ ❤️  (${newQuarters}/4)`);
+      }
+      // Animazione banner
+      Animated.sequence([
+        Animated.timing(bannerOpacity, { toValue: 1, duration: 400, useNativeDriver: true }),
+        Animated.delay(2500),
+        Animated.timing(bannerOpacity, { toValue: 0, duration: 600, useNativeDriver: true }),
+      ]).start(() => setMentalityBanner(null));
+    }).catch(() => {});
+  }, [user?.id]);
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+      {/* Mentality banner */}
+      {mentalityBanner && (
+        <Animated.View style={[styles.mentalityBanner, { opacity: bannerOpacity }]}>
+          <Text style={styles.mentalityBannerText}>{mentalityBanner}</Text>
+        </Animated.View>
+      )}
+
       {/* 1. Score card — compatta */}
       <View style={styles.heroCard}>
         <Text style={styles.hello}>Ciao, {user?.username} 🐷</Text>
@@ -204,6 +240,14 @@ export default function DashboardScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f7f7f7' },
   content: { padding: 20, paddingBottom: 40 },
+
+  // Mentality banner
+  mentalityBanner: {
+    backgroundColor: '#E8F5E9', borderRadius: 14, padding: 14,
+    marginBottom: 12, alignItems: 'center',
+    borderWidth: 2, borderColor: '#4CAF50',
+  },
+  mentalityBannerText: { fontSize: 15, fontWeight: '700', color: '#2e7d32' },
 
   // 1. Hero score — compatta
   heroCard: {
