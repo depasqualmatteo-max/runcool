@@ -109,18 +109,19 @@ const PIG_BACKGROUNDS = ['#FFEAA7', '#DFE6E9', '#FAB1A0', '#81ECEC', '#A29BFE'];
 const PIG_FRAMES = ['#FFD700', '#C0C0C0', '#CD7F32', '#E84393', '#00CEC9'];
 const PIG_SKINS = ['🐷', '🐽', '🐖', '🐗', '🐾'];
 
-// ─── Cuore a 4 spicchi (emoji) ──────────────────────────────────────────
+// ─── Cervelli a 4 spicchi (emoji) ───────────────────────────────────────
 function HeartQuarters({ quarters }: { quarters: number }) {
-  const hearts = [1, 2, 3, 4].map(n => quarters >= n ? '❤️' : '🤍');
   return (
     <View style={{ width: 64, height: 64 }}>
       <View style={{ flexDirection: 'row' }}>
-        <Text style={{ fontSize: 28, lineHeight: 32 }}>{hearts[0]}</Text>
-        <Text style={{ fontSize: 28, lineHeight: 32 }}>{hearts[1]}</Text>
+        {[1, 2, 3, 4].slice(0, 2).map(n => (
+          <Text key={n} style={{ fontSize: 28, lineHeight: 32, opacity: quarters >= n ? 1 : 0.2 }}>🧠</Text>
+        ))}
       </View>
       <View style={{ flexDirection: 'row' }}>
-        <Text style={{ fontSize: 28, lineHeight: 32 }}>{hearts[2]}</Text>
-        <Text style={{ fontSize: 28, lineHeight: 32 }}>{hearts[3]}</Text>
+        {[3, 4].map(n => (
+          <Text key={n} style={{ fontSize: 28, lineHeight: 32, opacity: quarters >= n ? 1 : 0.2 }}>🧠</Text>
+        ))}
       </View>
     </View>
   );
@@ -408,7 +409,7 @@ export default function ProfiloScreen() {
       {isOwner && (
         <View style={styles.mentalityCard}>
           <View style={styles.mentalityHeader}>
-            <Text style={styles.mentalityTitle}>Mentality 🧠</Text>
+            <Text style={styles.mentalityTitle}>Mentality</Text>
             <Text style={styles.mentalitySubtitle}>Apri l'app ogni giorno per guadagnare cuori</Text>
           </View>
           <View style={styles.mentalityBody}>
