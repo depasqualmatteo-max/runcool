@@ -49,7 +49,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const registering = useRef(false);
 
   useEffect(() => {
+    // Timeout di sicurezza: se getSession non risponde entro 6s, sblocca l'app
+    const safetyTimeout = setTimeout(() => setIsLoading(false), 6000);
+
     supabase.auth.getSession().then(({ data: { session } }) => {
+      clearTimeout(safetyTimeout);
       if (session?.user) {
         loadUserData(session.user.id, session.user.email!);
       } else {
