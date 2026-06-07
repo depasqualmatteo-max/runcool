@@ -11,6 +11,7 @@ import { useApp } from '@/context/AppContext';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { getMentalityState } from '@/lib/mentality';
 import { WORKOUT_MAP } from '@/constants/workouts';
+import { DRINK_MAP } from '@/constants/drinks';
 
 const SCREEN_W = Dimensions.get('window').width;
 
@@ -177,7 +178,27 @@ function computeStats(logs: any[]): ActivityStat[] {
       };
     });
 
-  return [...fixed, ...dynamic];
+  // Alcolici dinamici: ogni drink loggato almeno una volta
+  const drinks = logs.filter(l => l.type === 'drink');
+  const byDrink: Record<string, number> = {};
+  drinks.forEach(l => {
+    const id = l.drinkId ?? l.workoutId ?? l.item_id;
+    if (id) byDrink[id] = (byDrink[id] ?? 0) + (l.quantity ?? 1);
+  });
+
+  const dynamicDrinks: ActivityStat[] = Object.entries(byDrink)
+    .filter(([, qty]) => qty > 0)
+    .map(([id, qty]) => {
+      const def = DRINK_MAP[id as keyof typeof DRINK_MAP];
+      return {
+        id: `drink_${id}`,
+        icon: def?.icon ?? '🍺',
+        label: def?.name ?? id,
+        value: `×${Math.round(qty)}`,
+      };
+    });
+
+  return [...fixed, ...dynamic, ...dynamicDrinks];
 }
 
 export default function ProfiloScreen() {
@@ -224,18 +245,21 @@ export default function ProfiloScreen() {
         if (data) setProfileData({ username: data.username, avatarUrl: data.avatar_url, hearts: data.hearts });
       });
     supabase.from('logs')
-      .select('type, hearts_delta, km, elevation_meters, created_at')
+      .select('type, hearts_delta, km, elevation_meters, created_at, item_id, quantity, duration_minutes')
       .eq('user_id', uid)
       .order('created_at', { ascending: false })
       .then(({ data }) => {
         setOtherLogs((data ?? []).map(l => ({
           type: l.type,
+          drinkId: l.type === 'drink' ? l.item_id : undefined,
+          workoutId: l.type === 'workout' ? l.item_id : undefined,
           heartsLost: l.type === 'drink' ? Math.abs(l.hearts_delta ?? 0) : 0,
           heartsGained: l.type === 'workout' ? (l.hearts_delta ?? 0) : 0,
           km: l.km ?? 0,
           elevationMeters: l.elevation_meters ?? 0,
+          durationMinutes: l.duration_minutes ?? 0,
           timestamp: l.created_at,
-          quantity: 1,
+          quantity: l.quantity ?? 1,
         })));
       });
   }, [params.userId]);
@@ -462,9 +486,9 @@ export default function ProfiloScreen() {
       </Modal>
 
       {/* ─── Statistiche ─── */}
-      {isOwner && (
+      {stats.length > 0 && (
         <>
-          <Text style={styles.sectionTitle}>📊 Le tue statistiche</Text>
+          <Text style={styles.sectionTitle}>📊 {isOwner ? 'Le tue statistiche' : 'Statistiche'}</Text>
           <View style={styles.statsGrid}>
             {stats.map(s => (
               <View key={s.id} style={styles.statCard}>
