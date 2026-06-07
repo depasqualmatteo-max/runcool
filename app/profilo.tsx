@@ -73,31 +73,31 @@ function computeMedals(logs: any[], hearts: number, rankCounts?: RankCounts): Me
     { id: 'g_sing_1',  icon: '🥇', name: 'Campione',           desc: '1° nei singoli a fine mese',            earned: rc.gs >= 1 },
     { id: 'g_tand_1',  icon: '🥇', name: 'Coppia d\'Oro',      desc: '1° nel tandem a fine mese',             earned: rc.gt >= 1 },
     { id: 'g_clan_1',  icon: '🥇', name: 'Branco Alpha',       desc: '1° nel clan a fine mese',               earned: rc.gc >= 1 },
-    { id: 'g_sing_6',  icon: '🏆', name: 'Dominatore',          desc: '6 volte 1° singoli',                   earned: rc.gs >= 6 },
+    { id: 'g_sing_6',  icon: '🏆', name: 'Semestre d\'Oro',      desc: '6 volte 1° singoli',                   earned: rc.gs >= 6 },
     { id: 'g_tand_6',  icon: '🏆', name: 'Tandem Invincibile',  desc: '6 volte 1° tandem',                   earned: rc.gt >= 6 },
     { id: 'g_clan_6',  icon: '🏆', name: 'Clan Imbattibile',    desc: '6 volte 1° clan',                     earned: rc.gc >= 6 },
-    { id: 'g_12',      icon: '✨', name: 'Semestre d\'Oro',     desc: '12 ori totali (qualsiasi categoria)',   earned: totalGold >= 12 },
-    { id: 'g_24',      icon: '💎', name: 'Anno d\'Oro',         desc: '24 ori totali (qualsiasi categoria)',   earned: totalGold >= 24 },
+    { id: 'g_12',      icon: '✨', name: 'Anno d\'Oro',         desc: '12 ori totali (qualsiasi categoria)',   earned: totalGold >= 12 },
+    { id: 'g_24',      icon: '💎', name: 'Biennio d\'Oro',      desc: '24 ori totali (qualsiasi categoria)',   earned: totalGold >= 24 },
 
     // ─── Argento 🥈 ───
     { id: 's_sing_1',  icon: '🥈', name: 'Vice Campione',       desc: '2° nei singoli a fine mese',           earned: rc.ss >= 1 },
     { id: 's_tand_1',  icon: '🥈', name: 'Coppia d\'Argento',   desc: '2° nel tandem a fine mese',            earned: rc.st >= 1 },
     { id: 's_clan_1',  icon: '🥈', name: 'Branco Beta',         desc: '2° nel clan a fine mese',              earned: rc.sc >= 1 },
-    { id: 's_sing_6',  icon: '🪙', name: 'Eterno Secondo',      desc: '6 volte 2° singoli',                  earned: rc.ss >= 6 },
+    { id: 's_sing_6',  icon: '🪙', name: 'Semestre d\'Argento',  desc: '6 volte 2° singoli',                  earned: rc.ss >= 6 },
     { id: 's_tand_6',  icon: '🪙', name: 'Tandem d\'Argento',   desc: '6 volte 2° tandem',                   earned: rc.st >= 6 },
     { id: 's_clan_6',  icon: '🪙', name: 'Clan d\'Argento',     desc: '6 volte 2° clan',                     earned: rc.sc >= 6 },
-    { id: 's_12',      icon: '🌙', name: 'Semestre d\'Argento', desc: '12 argenti totali',                    earned: totalSilver >= 12 },
-    { id: 's_24',      icon: '⚪', name: 'Anno d\'Argento',     desc: '24 argenti totali',                    earned: totalSilver >= 24 },
+    { id: 's_12',      icon: '🌙', name: 'Anno d\'Argento',     desc: '12 argenti totali',                    earned: totalSilver >= 12 },
+    { id: 's_24',      icon: '⚪', name: 'Biennio d\'Argento',  desc: '24 argenti totali',                    earned: totalSilver >= 24 },
 
     // ─── Bronzo 🥉 ───
     { id: 'b_sing_1',  icon: '🥉', name: 'Sul Podio',           desc: '3° nei singoli a fine mese',           earned: rc.bs >= 1 },
     { id: 'b_tand_1',  icon: '🥉', name: 'Coppia di Bronzo',    desc: '3° nel tandem a fine mese',            earned: rc.bt >= 1 },
     { id: 'b_clan_1',  icon: '🥉', name: 'Branco Gamma',        desc: '3° nel clan a fine mese',              earned: rc.bc >= 1 },
-    { id: 'b_sing_6',  icon: '🔶', name: 'Veterano Singolo',    desc: '6 volte 3° singoli',                  earned: rc.bs >= 6 },
+    { id: 'b_sing_6',  icon: '🔶', name: 'Semestre di Bronzo',   desc: '6 volte 3° singoli',                  earned: rc.bs >= 6 },
     { id: 'b_tand_6',  icon: '🔶', name: 'Veterano Tandem',     desc: '6 volte 3° tandem',                   earned: rc.bt >= 6 },
     { id: 'b_clan_6',  icon: '🔶', name: 'Veterano Clan',       desc: '6 volte 3° clan',                     earned: rc.bc >= 6 },
-    { id: 'b_12',      icon: '🟤', name: 'Semestre di Bronzo',  desc: '12 bronzi totali',                     earned: totalBronze >= 12 },
-    { id: 'b_24',      icon: '🗿', name: 'Anno di Bronzo',      desc: '24 bronzi totali',                     earned: totalBronze >= 24 },
+    { id: 'b_12',      icon: '🟤', name: 'Anno di Bronzo',      desc: '12 bronzi totali',                     earned: totalBronze >= 12 },
+    { id: 'b_24',      icon: '🗿', name: 'Biennio di Bronzo',   desc: '24 bronzi totali',                     earned: totalBronze >= 24 },
   ];
 }
 
