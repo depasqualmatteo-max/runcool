@@ -19,7 +19,7 @@ interface PendingInvite {
 
 export default function TandemScreen() {
   const { user } = useAuth();
-  const [myTandem, setMyTandem] = useState<{ id: string; name: string; members: { username: string; avatar_url?: string | null }[] } | null>(null);
+  const [myTandem, setMyTandem] = useState<{ id: string; name: string; members: { username: string; avatar_url?: string | null; hearts?: number }[] } | null>(null);
   const [tandemName, setTandemName] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState<ProfileResult[]>([]);
@@ -81,7 +81,7 @@ export default function TandemScreen() {
         return;
       }
 
-      const { data: members } = await supabase.from('profiles').select('username, avatar_url').eq('tandem_id', tandem.id);
+      const { data: members } = await supabase.from('profiles').select('username, avatar_url, hearts').eq('tandem_id', tandem.id);
       setMyTandem({ ...tandem, members: members ?? [] });
 
       // Se solo 1 membro (l'altro ha lasciato), elimina il tandem
@@ -397,6 +397,7 @@ export default function TandemScreen() {
                 <View key={i} style={styles.memberAvatarItem}>
                   <UserAvatar avatarUrl={m.avatar_url} isMe={m.username === user?.username} size={52} />
                   <Text style={styles.memberAvatarName}>{m.username}</Text>
+                  <Text style={styles.memberAvatarScore}>{(m.hearts ?? 0) > 0 ? `+${Math.round(m.hearts ?? 0)}` : Math.round(m.hearts ?? 0)} ❤️</Text>
                 </View>
               ))}
             </View>
@@ -574,6 +575,7 @@ const styles = StyleSheet.create({
   membersAvatarRow: { flexDirection: 'row', justifyContent: 'center', gap: 24, marginBottom: 16 },
   memberAvatarItem: { alignItems: 'center', gap: 6 },
   memberAvatarName: { fontSize: 12, fontWeight: '600', color: '#555' },
+  memberAvatarScore: { fontSize: 13, fontWeight: '800', color: '#E8445A' },
   tandemName: { fontSize: 24, fontWeight: '800', color: '#1a1a1a', textAlign: 'center', marginBottom: 6 },
   cardTitle: { fontSize: 20, fontWeight: '800', color: '#1a1a1a', marginBottom: 6 },
   cardSub: { fontSize: 14, color: '#888', marginBottom: 24, lineHeight: 20 },
