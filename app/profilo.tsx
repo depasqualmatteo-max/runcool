@@ -103,21 +103,29 @@ function HeartQuarters({ quarters }: { quarters: number }) {
           backgroundColor: c(2),
         }} />
       </View>
-      {/* Bottom: punta del cuore (due triangoli) */}
+      {/* Bottom: punta del cuore (due triangoli verso il basso) */}
       <View style={{ flexDirection: 'row', width: HEART_W }}>
         <View style={{
           width: 0, height: 0,
+          borderBottomWidth: 0,
           borderTopWidth: TRI_H,
           borderRightWidth: HEART_W / 2,
+          borderLeftWidth: 0,
           borderTopColor: c(3),
           borderRightColor: 'transparent',
+          borderLeftColor: 'transparent',
+          borderBottomColor: 'transparent',
         }} />
         <View style={{
           width: 0, height: 0,
+          borderBottomWidth: 0,
           borderTopWidth: TRI_H,
           borderLeftWidth: HEART_W / 2,
+          borderRightWidth: 0,
           borderTopColor: c(4),
           borderLeftColor: 'transparent',
+          borderRightColor: 'transparent',
+          borderBottomColor: 'transparent',
         }} />
       </View>
     </View>
