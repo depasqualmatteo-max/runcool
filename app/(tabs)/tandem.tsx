@@ -5,6 +5,7 @@ import {
 } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
+import { useRouter } from 'expo-router';
 import { startOfWeek, endOfWeek, format } from 'date-fns';
 import { UserAvatar } from '@/components/UserAvatar';
 
@@ -35,15 +36,21 @@ export default function TandemScreen() {
     weekStart: string; weekEnd: string;
   }>(null);
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const [membersModal, setMembersModal] = useState<{ title: string; members: { username: string; hearts: number; avatar_url?: string | null }[] } | null>(null);
+  const router = useRouter();
+  const [membersModal, setMembersModal] = useState<{ title: string; members: { id: string; username: string; hearts: number; avatar_url?: string | null }[] } | null>(null);
 
   async function showTandemMembers(tandemId: string, tandemName: string) {
     const { data } = await supabase
       .from('profiles')
-      .select('username, hearts, avatar_url')
+      .select('id, username, hearts, avatar_url')
       .eq('tandem_id', tandemId)
       .order('hearts', { ascending: false });
     setMembersModal({ title: tandemName, members: data ?? [] });
+  }
+
+  function openProfile(userId: string) {
+    if (userId === user?.id) router.push('/profilo' as any);
+    else router.push(`/profilo?userId=${userId}` as any);
   }
 
   const load = useCallback(async () => {
@@ -502,14 +509,14 @@ export default function TandemScreen() {
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setMembersModal(null)}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{membersModal?.title}</Text>
-            {(membersModal?.members ?? []).map((m, i) => (
-              <View key={i} style={styles.modalMember}>
+            {(membersModal?.members ?? []).map((m) => (
+              <TouchableOpacity key={m.id} style={styles.modalMember} onPress={() => { setMembersModal(null); openProfile(m.id); }}>
                 <UserAvatar avatarUrl={m.avatar_url} size={32} />
                 <Text style={styles.modalMemberName}>{m.username}</Text>
                 <Text style={[styles.modalMemberScore, { color: m.hearts >= 0 ? '#E8445A' : '#ff3b30' }]}>
                   {m.hearts > 0 ? `+${Math.round(m.hearts)}` : Math.round(m.hearts)}
                 </Text>
-              </View>
+              </TouchableOpacity>
             ))}
             <TouchableOpacity style={styles.modalClose} onPress={() => setMembersModal(null)}>
               <Text style={styles.modalCloseText}>Chiudi</Text>

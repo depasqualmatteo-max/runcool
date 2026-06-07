@@ -40,16 +40,21 @@ export default function ClassificheScreen() {
   const [rankings, setRankings] = useState<RankEntry[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [membersModal, setMembersModal] = useState<{ title: string; members: { username: string; hearts: number; avatar_url?: string | null }[] } | null>(null);
+  const [membersModal, setMembersModal] = useState<{ title: string; members: { id: string; username: string; hearts: number; avatar_url?: string | null }[] } | null>(null);
 
   async function showGroupMembers(groupId: string, groupName: string, type: 'clan' | 'tandem') {
     const field = type === 'clan' ? 'clan_id' : 'tandem_id';
     const { data } = await supabase
       .from('profiles')
-      .select('username, hearts, avatar_url')
+      .select('id, username, hearts, avatar_url')
       .eq(field, groupId)
       .order('hearts', { ascending: false });
     setMembersModal({ title: groupName, members: data ?? [] });
+  }
+
+  function openProfile(userId: string) {
+    if (userId === user?.id) router.push('/profilo' as any);
+    else router.push(`/profilo?userId=${userId}` as any);
   }
 
   const load = useCallback(async () => {
@@ -168,7 +173,7 @@ export default function ClassificheScreen() {
           {top3.length >= 3 && (
             <View style={styles.podium}>
               {/* 2° posto */}
-              <View style={[styles.podiumItem, { marginTop: 28 }]}>
+              <TouchableOpacity style={[styles.podiumItem, { marginTop: 28 }]} onPress={() => category === 'singoli' ? openProfile(top3[1].id) : showGroupMembers(top3[1].id, top3[1].name, category as 'clan' | 'tandem')}>
                 {category === 'singoli'
                   ? <UserAvatar avatarUrl={top3[1].avatarUrl} isMe={top3[1].isMe} size={44} />
                   : <Text style={styles.podiumAvatar}>{category === 'clan' ? '🏆' : '👥'}</Text>}
@@ -177,9 +182,9 @@ export default function ClassificheScreen() {
                 <Text style={[styles.podiumScore, { color: top3[1].score >= 0 ? '#E8445A' : '#ff3b30' }]}>
                   {top3[1].score >= 0 ? '+' : ''}{Math.round(top3[1].score)}
                 </Text>
-              </View>
+              </TouchableOpacity>
               {/* 1° posto */}
-              <View style={[styles.podiumItem, styles.podiumFirst]}>
+              <TouchableOpacity style={[styles.podiumItem, styles.podiumFirst]} onPress={() => category === 'singoli' ? openProfile(top3[0].id) : showGroupMembers(top3[0].id, top3[0].name, category as 'clan' | 'tandem')}>
                 {category === 'singoli'
                   ? <UserAvatar avatarUrl={top3[0].avatarUrl} isMe={top3[0].isMe} size={54} />
                   : <Text style={styles.podiumAvatarBig}>{category === 'clan' ? '🏆' : '👥'}</Text>}
@@ -188,9 +193,9 @@ export default function ClassificheScreen() {
                 <Text style={[styles.podiumScore, { color: top3[0].score >= 0 ? '#E8445A' : '#ff3b30' }]}>
                   {top3[0].score >= 0 ? '+' : ''}{Math.round(top3[0].score)}
                 </Text>
-              </View>
+              </TouchableOpacity>
               {/* 3° posto */}
-              <View style={[styles.podiumItem, { marginTop: 48 }]}>
+              <TouchableOpacity style={[styles.podiumItem, { marginTop: 48 }]} onPress={() => category === 'singoli' ? openProfile(top3[2].id) : showGroupMembers(top3[2].id, top3[2].name, category as 'clan' | 'tandem')}>
                 {category === 'singoli'
                   ? <UserAvatar avatarUrl={top3[2].avatarUrl} isMe={top3[2].isMe} size={44} />
                   : <Text style={styles.podiumAvatar}>{category === 'clan' ? '🏆' : '👥'}</Text>}
@@ -199,7 +204,7 @@ export default function ClassificheScreen() {
                 <Text style={[styles.podiumScore, { color: top3[2].score >= 0 ? '#E8445A' : '#ff3b30' }]}>
                   {top3[2].score >= 0 ? '+' : ''}{Math.round(top3[2].score)}
                 </Text>
-              </View>
+              </TouchableOpacity>
             </View>
           )}
 
@@ -212,13 +217,12 @@ export default function ClassificheScreen() {
             <Text style={styles.empty}>Nessun dato per questo periodo 🐷</Text>
           ) : (
             rankings.map((r, i) => {
-              const isTappable = category !== 'singoli';
-              const Row = isTappable ? TouchableOpacity : View;
+              const isGroup = category !== 'singoli';
               return (
-                <Row
+                <TouchableOpacity
                   key={r.id}
                   style={[styles.row, r.isMe && styles.rowMe, i === 0 && styles.rowFirst]}
-                  {...(isTappable ? { onPress: () => showGroupMembers(r.id, r.name, category as 'clan' | 'tandem') } : {})}
+                  onPress={() => isGroup ? showGroupMembers(r.id, r.name, category as 'clan' | 'tandem') : openProfile(r.id)}
                 >
                   <Text style={[styles.rankText, i < 3 && styles.rankMedal]}>{medal(i)}</Text>
                   {category === 'singoli'
@@ -231,7 +235,7 @@ export default function ClassificheScreen() {
                   <Text style={[styles.rowScore, { color: r.score >= 0 ? '#E8445A' : '#ff3b30' }]}>
                     {r.score >= 0 ? '+' : ''}{Math.round(r.score)} ❤️
                   </Text>
-                </Row>
+                </TouchableOpacity>
               );
             })
           )}
@@ -245,14 +249,14 @@ export default function ClassificheScreen() {
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setMembersModal(null)}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{membersModal?.title}</Text>
-            {(membersModal?.members ?? []).map((m, i) => (
-              <View key={i} style={styles.modalMember}>
+            {(membersModal?.members ?? []).map((m) => (
+              <TouchableOpacity key={m.id} style={styles.modalMember} onPress={() => { setMembersModal(null); openProfile(m.id); }}>
                 <UserAvatar avatarUrl={m.avatar_url} size={32} />
                 <Text style={styles.modalMemberName}>{m.username}</Text>
                 <Text style={[styles.modalMemberScore, { color: m.hearts >= 0 ? '#E8445A' : '#ff3b30' }]}>
                   {m.hearts > 0 ? `+${Math.round(m.hearts)}` : Math.round(m.hearts)}
                 </Text>
-              </View>
+              </TouchableOpacity>
             ))}
             <TouchableOpacity style={styles.modalClose} onPress={() => setMembersModal(null)}>
               <Text style={styles.modalCloseText}>Chiudi</Text>

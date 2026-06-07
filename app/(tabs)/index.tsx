@@ -119,25 +119,25 @@ export default function DashboardScreen() {
             {/* Due metà con diagonale */}
             <View style={styles.tandemBody}>
               {/* Membro sinistro */}
-              <View style={styles.tandemHalf}>
+              <TouchableOpacity style={styles.tandemHalf} onPress={() => router.push(tandem.members[0].id === user?.id ? '/profilo' : `/profilo?userId=${tandem.members[0].id}` as any)}>
                 <UserAvatar avatarUrl={tandem.members[0].avatarUrl} isMe={tandem.members[0].id === user?.id} size={54} />
                 <Text style={styles.tandemMemberName} numberOfLines={1}>{tandem.members[0].username}</Text>
                 <Text style={[styles.tandemMemberScore, { color: tandem.members[0].hearts >= 0 ? '#9C27B0' : '#ff3b30' }]}>
                   {tandem.members[0].hearts > 0 ? '+' : ''}{Math.round(tandem.members[0].hearts)}
                 </Text>
-              </View>
+              </TouchableOpacity>
               {/* Separatore diagonale */}
               <View style={styles.tandemDiagonalContainer}>
                 <View style={styles.tandemDiagonal} />
               </View>
               {/* Membro destro */}
-              <View style={styles.tandemHalf}>
+              <TouchableOpacity style={styles.tandemHalf} onPress={() => router.push(tandem.members[1].id === user?.id ? '/profilo' : `/profilo?userId=${tandem.members[1].id}` as any)}>
                 <UserAvatar avatarUrl={tandem.members[1].avatarUrl} isMe={tandem.members[1].id === user?.id} size={54} />
                 <Text style={styles.tandemMemberName} numberOfLines={1}>{tandem.members[1].username}</Text>
                 <Text style={[styles.tandemMemberScore, { color: tandem.members[1].hearts >= 0 ? '#9C27B0' : '#ff3b30' }]}>
                   {tandem.members[1].hearts > 0 ? '+' : ''}{Math.round(tandem.members[1].hearts)}
                 </Text>
-              </View>
+              </TouchableOpacity>
             </View>
           </View>
         </>
@@ -157,13 +157,13 @@ export default function DashboardScreen() {
             </Text>
             <View style={styles.clanMembersGrid}>
               {clan.members.map((m) => (
-                <View key={m.id} style={styles.clanMemberItem}>
+                <TouchableOpacity key={m.id} style={styles.clanMemberItem} onPress={() => router.push(m.id === user?.id ? '/profilo' : `/profilo?userId=${m.id}` as any)}>
                   <UserAvatar avatarUrl={m.avatarUrl} isMe={m.id === user?.id} size={48} />
                   <Text style={styles.clanMemberName} numberOfLines={1}>{m.username}</Text>
                   <Text style={[styles.clanMemberScore, { color: m.hearts >= 0 ? '#E8445A' : '#ff3b30' }]}>
                     {m.hearts > 0 ? '+' : ''}{Math.round(m.hearts)}
                   </Text>
-                </View>
+                </TouchableOpacity>
               ))}
             </View>
           </View>

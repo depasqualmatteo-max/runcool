@@ -6,6 +6,7 @@ import {
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useApp } from '@/context/AppContext';
+import { useRouter } from 'expo-router';
 import { format } from 'date-fns';
 import { UserAvatar } from '@/components/UserAvatar';
 
@@ -27,15 +28,21 @@ export default function ClanScreen() {
   const isOwner = clan && user && clan.ownerId === user.id;
 
   const clanScore = clan ? clan.members.reduce((s, m) => s + m.hearts, 0) : 0;
-  const [clanMembersModal, setClanMembersModal] = useState<{ title: string; members: { username: string; hearts: number; avatar_url?: string | null }[] } | null>(null);
+  const router = useRouter();
+  const [clanMembersModal, setClanMembersModal] = useState<{ title: string; members: { id: string; username: string; hearts: number; avatar_url?: string | null }[] } | null>(null);
 
   async function showClanMembers(clanId: string, clanName: string) {
     const { data } = await supabase
       .from('profiles')
-      .select('username, hearts, avatar_url')
+      .select('id, username, hearts, avatar_url')
       .eq('clan_id', clanId)
       .order('hearts', { ascending: false });
     setClanMembersModal({ title: clanName, members: data ?? [] });
+  }
+
+  function openProfile(userId: string) {
+    if (userId === user?.id) router.push('/profilo' as any);
+    else router.push(`/profilo?userId=${userId}` as any);
   }
 
   const loadChallenge = useCallback(async () => {
@@ -396,14 +403,14 @@ export default function ClanScreen() {
         <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setClanMembersModal(null)}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>{clanMembersModal?.title}</Text>
-            {(clanMembersModal?.members ?? []).map((m, i) => (
-              <View key={i} style={styles.modalMember}>
+            {(clanMembersModal?.members ?? []).map((m) => (
+              <TouchableOpacity key={m.id} style={styles.modalMember} onPress={() => { setClanMembersModal(null); openProfile(m.id); }}>
                 <UserAvatar avatarUrl={m.avatar_url} size={32} />
                 <Text style={styles.modalMemberName}>{m.username}</Text>
                 <Text style={[styles.modalMemberScore, { color: m.hearts >= 0 ? '#E8445A' : '#ff3b30' }]}>
                   {m.hearts > 0 ? `+${Math.round(m.hearts)}` : Math.round(m.hearts)}
                 </Text>
-              </View>
+              </TouchableOpacity>
             ))}
             <TouchableOpacity style={styles.modalClose} onPress={() => setClanMembersModal(null)}>
               <Text style={styles.modalCloseText}>Chiudi</Text>
