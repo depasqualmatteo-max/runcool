@@ -3,7 +3,7 @@ import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import React, { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { Platform, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useColorScheme } from '@/components/useColorScheme';
@@ -66,7 +66,7 @@ function SplashGate({ fontsLoaded, children }: { fontsLoaded: boolean; children:
     if (ready) SplashScreen.hideAsync();
   }, [ready]);
 
-  if (!ready) return null;
+  if (!ready) return <View style={{ flex: 1, backgroundColor: '#ffffff' }} />;
   return <>{children}</>;
 }
 
