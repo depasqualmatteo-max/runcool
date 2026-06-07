@@ -99,7 +99,7 @@ function RootLayoutNav() {
         <Stack.Screen
           name="profilo"
           options={{
-            title: 'Il mio profilo',
+            title: 'Profilo personale',
             presentation: 'modal',
             headerStyle: { backgroundColor: '#fff' },
             headerTitleStyle: { fontWeight: '700', color: '#1a1a1a' },
