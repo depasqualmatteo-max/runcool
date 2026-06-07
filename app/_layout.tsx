@@ -2,12 +2,12 @@ import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
-import { useEffect } from 'react';
+import React, { useEffect } from 'react';
 import { Platform } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
 import { useColorScheme } from '@/components/useColorScheme';
-import { AuthProvider } from '@/context/AuthContext';
+import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { AppProvider } from '@/context/AppContext';
 
 // Inietta i meta tag iOS PWA nel DOM (necessario per standalone mode)
@@ -49,6 +49,20 @@ export const unstable_settings = {
 
 SplashScreen.preventAutoHideAsync();
 
+// Nasconde il splash screen solo quando font E auth sono entrambi pronti
+function SplashGate({ fontsLoaded, children }: { fontsLoaded: boolean; children: React.ReactNode }) {
+  const { isLoading } = useAuth();
+
+  useEffect(() => {
+    if (fontsLoaded && !isLoading) {
+      SplashScreen.hideAsync();
+    }
+  }, [fontsLoaded, isLoading]);
+
+  if (!fontsLoaded || isLoading) return null;
+  return <>{children}</>;
+}
+
 export default function RootLayout() {
   const [loaded, error] = useFonts({
     SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
@@ -59,10 +73,6 @@ export default function RootLayout() {
   }, [error]);
 
   useEffect(() => {
-    if (loaded) SplashScreen.hideAsync();
-  }, [loaded]);
-
-  useEffect(() => {
     injectIOSPWATags();
   }, []);
 
@@ -70,7 +80,9 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <AuthProvider>
         <AppProvider>
-          {loaded ? <RootLayoutNav /> : null}
+          <SplashGate fontsLoaded={!!loaded}>
+            <RootLayoutNav />
+          </SplashGate>
         </AppProvider>
       </AuthProvider>
     </SafeAreaProvider>
