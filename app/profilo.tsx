@@ -108,56 +108,18 @@ const PIG_BACKGROUNDS = ['#FFEAA7', '#DFE6E9', '#FAB1A0', '#81ECEC', '#A29BFE'];
 const PIG_FRAMES = ['#FFD700', '#C0C0C0', '#CD7F32', '#E84393', '#00CEC9'];
 const PIG_SKINS = ['🐷', '🐽', '🐖', '🐗', '🐾'];
 
-// ─── Cuore a 4 spicchi ──────────────────────────────────────────────────
-const HEART_W = 72;
-const BUMP_R = HEART_W / 4;
-const BUMP_D = BUMP_R * 2;
-const TRI_H = HEART_W * 0.52;
-
+// ─── Cuore a 4 spicchi (emoji) ──────────────────────────────────────────
 function HeartQuarters({ quarters }: { quarters: number }) {
-  const f = '#E8445A';
-  const e = '#e0e0e0';
-  const c = (n: number) => quarters >= n ? f : e;
-
+  const hearts = [1, 2, 3, 4].map(n => quarters >= n ? '❤️' : '🤍');
   return (
-    <View style={{ width: HEART_W, height: BUMP_D + TRI_H, alignItems: 'center' }}>
-      <View style={{ flexDirection: 'row', width: HEART_W }}>
-        <View style={{
-          width: BUMP_D, height: BUMP_D,
-          borderTopLeftRadius: BUMP_R, borderTopRightRadius: BUMP_R,
-          borderBottomLeftRadius: 2, borderBottomRightRadius: 0,
-          backgroundColor: c(1),
-        }} />
-        <View style={{
-          width: BUMP_D, height: BUMP_D,
-          borderTopLeftRadius: BUMP_R, borderTopRightRadius: BUMP_R,
-          borderBottomLeftRadius: 0, borderBottomRightRadius: 2,
-          backgroundColor: c(2),
-        }} />
+    <View style={{ width: 64, height: 64 }}>
+      <View style={{ flexDirection: 'row' }}>
+        <Text style={{ fontSize: 28, lineHeight: 32 }}>{hearts[0]}</Text>
+        <Text style={{ fontSize: 28, lineHeight: 32 }}>{hearts[1]}</Text>
       </View>
-      <View style={{ flexDirection: 'row', width: HEART_W }}>
-        <View style={{
-          width: 0, height: 0,
-          borderTopWidth: TRI_H,
-          borderLeftWidth: HEART_W / 2,
-          borderRightWidth: 0,
-          borderBottomWidth: 0,
-          borderTopColor: c(3),
-          borderLeftColor: 'transparent',
-          borderRightColor: 'transparent',
-          borderBottomColor: 'transparent',
-        }} />
-        <View style={{
-          width: 0, height: 0,
-          borderTopWidth: TRI_H,
-          borderRightWidth: HEART_W / 2,
-          borderLeftWidth: 0,
-          borderBottomWidth: 0,
-          borderTopColor: c(4),
-          borderRightColor: 'transparent',
-          borderLeftColor: 'transparent',
-          borderBottomColor: 'transparent',
-        }} />
+      <View style={{ flexDirection: 'row' }}>
+        <Text style={{ fontSize: 28, lineHeight: 32 }}>{hearts[2]}</Text>
+        <Text style={{ fontSize: 28, lineHeight: 32 }}>{hearts[3]}</Text>
       </View>
     </View>
   );
