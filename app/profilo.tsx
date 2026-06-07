@@ -75,6 +75,55 @@ const PIG_BACKGROUNDS = ['#FFEAA7', '#DFE6E9', '#FAB1A0', '#81ECEC', '#A29BFE'];
 const PIG_FRAMES = ['#FFD700', '#C0C0C0', '#CD7F32', '#E84393', '#00CEC9'];
 const PIG_SKINS = ['🐷', '🐽', '🐖', '🐗', '🐾'];
 
+// ─── Cuore a 4 spicchi ──────────────────────────────────────────────────
+const HEART_W = 72;
+const BUMP_R = HEART_W / 4;       // raggio di ogni "gobba"
+const BUMP_D = BUMP_R * 2;        // diametro gobba
+const TRI_H = HEART_W * 0.52;     // altezza della punta
+
+function HeartQuarters({ quarters }: { quarters: number }) {
+  const f = '#E8445A';  // filled
+  const e = '#e0e0e0';  // empty
+  const c = (n: number) => quarters >= n ? f : e;
+
+  return (
+    <View style={{ width: HEART_W, height: BUMP_D + TRI_H, alignItems: 'center' }}>
+      {/* Top: due gobbe (semicerchi) */}
+      <View style={{ flexDirection: 'row', width: HEART_W }}>
+        <View style={{
+          width: BUMP_D, height: BUMP_D,
+          borderTopLeftRadius: BUMP_R, borderTopRightRadius: BUMP_R,
+          borderBottomLeftRadius: 2, borderBottomRightRadius: 0,
+          backgroundColor: c(1),
+        }} />
+        <View style={{
+          width: BUMP_D, height: BUMP_D,
+          borderTopLeftRadius: BUMP_R, borderTopRightRadius: BUMP_R,
+          borderBottomLeftRadius: 0, borderBottomRightRadius: 2,
+          backgroundColor: c(2),
+        }} />
+      </View>
+      {/* Bottom: punta del cuore (due triangoli) */}
+      <View style={{ flexDirection: 'row', width: HEART_W }}>
+        <View style={{
+          width: 0, height: 0,
+          borderTopWidth: TRI_H,
+          borderRightWidth: HEART_W / 2,
+          borderTopColor: c(3),
+          borderRightColor: 'transparent',
+        }} />
+        <View style={{
+          width: 0, height: 0,
+          borderTopWidth: TRI_H,
+          borderLeftWidth: HEART_W / 2,
+          borderTopColor: c(4),
+          borderLeftColor: 'transparent',
+        }} />
+      </View>
+    </View>
+  );
+}
+
 export default function ProfiloScreen() {
   const { user, logout, updateAvatar, updateUsername, refreshClan } = useAuth();
   const { state } = useApp();
@@ -275,14 +324,7 @@ export default function ProfiloScreen() {
           </View>
           <View style={styles.mentalityBody}>
             {/* Cuore a 4 spicchi */}
-            <View style={styles.heartContainer}>
-              <View style={styles.heartGrid}>
-                <View style={[styles.heartQuarter, styles.heartTL, mentalityQuarters >= 1 && styles.heartFilled]} />
-                <View style={[styles.heartQuarter, styles.heartTR, mentalityQuarters >= 2 && styles.heartFilled]} />
-                <View style={[styles.heartQuarter, styles.heartBL, mentalityQuarters >= 4 && styles.heartFilled]} />
-                <View style={[styles.heartQuarter, styles.heartBR, mentalityQuarters >= 3 && styles.heartFilled]} />
-              </View>
-            </View>
+            <HeartQuarters quarters={mentalityQuarters} />
             <View style={styles.mentalityInfo}>
               <Text style={styles.mentalityProgress}>{mentalityQuarters}/4</Text>
               <Text style={styles.mentalityHint}>
@@ -440,23 +482,6 @@ const styles = StyleSheet.create({
   mentalityTitle: { fontSize: 16, fontWeight: '800', color: '#1a1a1a' },
   mentalitySubtitle: { fontSize: 12, color: '#888', marginTop: 2 },
   mentalityBody: { flexDirection: 'row', alignItems: 'center', gap: 20 },
-  heartContainer: {
-    width: 64, height: 64, borderRadius: 32,
-    backgroundColor: '#f5f5f5', overflow: 'hidden',
-    borderWidth: 2, borderColor: '#e0e0e0',
-  },
-  heartGrid: {
-    flex: 1, flexDirection: 'row', flexWrap: 'wrap',
-  },
-  heartQuarter: {
-    width: '50%', height: '50%',
-    backgroundColor: '#f0f0f0',
-  },
-  heartTL: { borderRightWidth: 1, borderBottomWidth: 1, borderColor: '#e0e0e0' },
-  heartTR: { borderBottomWidth: 1, borderColor: '#e0e0e0' },
-  heartBL: { borderRightWidth: 1, borderColor: '#e0e0e0' },
-  heartBR: {},
-  heartFilled: { backgroundColor: '#E8445A' },
   mentalityInfo: { flex: 1 },
   mentalityProgress: { fontSize: 28, fontWeight: '900', color: '#E8445A' },
   mentalityHint: { fontSize: 12, color: '#888', marginTop: 2 },
