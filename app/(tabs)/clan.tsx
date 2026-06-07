@@ -203,22 +203,9 @@ export default function ClanScreen() {
       contentContainerStyle={styles.content}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FFD700" />}
     >
-      {/* Profile summary */}
-      <View style={styles.profileCard}>
-        <Text style={styles.profileEmoji}>🐷</Text>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.profileName}>{user?.username}</Text>
-          <Text style={styles.profileEmail}>{user?.email}</Text>
-        </View>
-        <Text style={[styles.profileScore, { color: state.hearts >= 0 ? '#E8445A' : '#ff3b30' }]}>
-          {state.hearts > 0 ? `+${Math.round(state.hearts)}` : Math.round(state.hearts)}
-        </Text>
-      </View>
-
       {clan ? (
         <>
           {/* Clan info */}
-          <Text style={styles.sectionTitle}>Il tuo clan</Text>
           <View style={styles.clanCard}>
             <View style={styles.clanHeaderRow}>
               <Text style={styles.clanName}>🏆 {clan.name}</Text>
