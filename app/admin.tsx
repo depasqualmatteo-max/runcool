@@ -6,7 +6,7 @@ import {
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
 
-const ADMIN_EMAIL = 'de.pasqual.matteo@gmail.com';
+const ADMIN_EMAILS = ['de.pasqual.matteo@gmail.com', 'andreasperti@yahoo.it'];
 
 export default function AdminScreen() {
   const { user } = useAuth();
@@ -14,7 +14,7 @@ export default function AdminScreen() {
   const [body, setBody] = useState('');
   const [sending, setSending] = useState(false);
 
-  if (user?.email !== ADMIN_EMAIL) {
+  if (!ADMIN_EMAILS.includes(user?.email ?? '')) {
     return (
       <View style={styles.center}>
         <Text style={styles.forbidden}>🚫 Accesso negato</Text>

@@ -509,7 +509,7 @@ export default function ProfiloScreen() {
             <Text style={styles.actionBtnText}>📖 Regole del gioco</Text>
           </TouchableOpacity>
 
-          {user?.email === 'de.pasqual.matteo@gmail.com' && (
+          {['de.pasqual.matteo@gmail.com', 'andreasperti@yahoo.it'].includes(user?.email ?? '') && (
             <TouchableOpacity style={styles.adminBtn} onPress={() => router.push('/admin' as any)}>
               <Text style={styles.adminText}>⚙️ Admin</Text>
             </TouchableOpacity>
