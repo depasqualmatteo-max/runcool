@@ -81,7 +81,6 @@ export default function LogDrinkScreen() {
             >
               <Text style={styles.drinkIcon}>{drink.icon}</Text>
               <Text style={styles.drinkName}>{drink.name}</Text>
-              <Text style={styles.drinkCal}>{drink.calories} kcal</Text>
               <Text style={styles.drinkHearts}>-{hearts} ❤️</Text>
             </TouchableOpacity>
           );
@@ -107,7 +106,6 @@ export default function LogDrinkScreen() {
         <View style={styles.previewCard}>
           <Text style={styles.previewTitle}>Riepilogo, maialino</Text>
           <Text style={styles.previewLine}>{selected.icon} {selected.name} × {quantity}</Text>
-          <Text style={styles.previewLine}>🔥 {previewCalories} kcal totali</Text>
           <Text style={styles.previewHearts}>
             -{previewHearts} ❤️  ({state.hearts} → {state.hearts - previewHearts})
           </Text>

@@ -134,7 +134,9 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       const isKmSport = workout.inputType === 'km' || workout.inputType === 'km_elevation';
       if (isKmSport && km && km > 0) {
         if (workout.inputType === 'km_elevation') {
-          calories = calcWalkingCalories(km, elevationMeters ?? 0);
+          // Formula: cuori = (km + dislivello × 0.03) / 6
+          const directHearts = Math.max(1, Math.round((km + (elevationMeters ?? 0) * 0.03) / 6));
+          calories = directHearts * 240; // 240 = calPerHeart camminata
         } else {
           calories = Math.round((workout.calPerKm ?? 60) * km);
         }

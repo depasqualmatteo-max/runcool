@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView,
   TouchableOpacity, Alert, TextInput, Platform,
@@ -6,13 +6,14 @@ import {
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { useApp } from '@/context/AppContext';
-import { WORKOUTS, DURATION_OPTIONS, calcWalkingCalories } from '@/constants/workouts';
+import { WORKOUTS, DURATION_OPTIONS } from '@/constants/workouts';
 import { calcHeartsGained } from '@/constants/hearts';
 import { WorkoutId } from '@/types';
 
 export default function LogWorkoutScreen() {
   const { state, logWorkout } = useApp();
   const router = useRouter();
+  const scrollRef = useRef<ScrollView>(null);
   const [logging, setLogging] = useState(false);
   const [selectedWorkout, setSelectedWorkout] = useState<WorkoutId | null>(null);
   const [duration, setDuration] = useState(30);
@@ -21,30 +22,39 @@ export default function LogWorkoutScreen() {
 
   const selected = WORKOUTS.find((w) => w.id === selectedWorkout);
 
-  function calcPreview(): { calories: number; hearts: number } {
-    if (!selected) return { calories: 0, hearts: 0 };
-    let cal = 0;
+  function calcPreview(): { hearts: number } {
+    if (!selected) return { hearts: 0 };
+    let hearts = 0;
     if (selected.inputType === 'duration') {
-      cal = Math.round((selected.calPerMin ?? 0) * duration);
+      const cal = Math.round((selected.calPerMin ?? 0) * duration);
+      hearts = cal > 0 ? calcHeartsGained(cal, selected.id) : 0;
     } else if (selected.inputType === 'km') {
       const k = parseFloat(km) || 0;
-      cal = Math.round((selected.calPerKm ?? 60) * k);
+      const cal = Math.round((selected.calPerKm ?? 60) * k);
+      hearts = cal > 0 ? calcHeartsGained(cal, selected.id) : 0;
     } else if (selected.inputType === 'km_elevation') {
       const k = parseFloat(km) || 0;
       const e = parseInt(elevation) || 0;
-      cal = calcWalkingCalories(k, e);
+      hearts = k > 0 ? Math.max(1, Math.round((k + e * 0.03) / 6)) : 0;
     }
-    const hearts = cal > 0 ? calcHeartsGained(cal, selected.id) : 0;
-    return { calories: cal, hearts };
+    return { hearts };
   }
 
-  const { calories: previewCalories, hearts: previewHearts } = calcPreview();
+  const { hearts: previewHearts } = calcPreview();
 
   function isReadyToLog(): boolean {
     if (!selected) return false;
     if (selected.inputType === 'duration') return true;
     const k = parseFloat(km);
     return !isNaN(k) && k > 0;
+  }
+
+  function handleSelectWorkout(id: WorkoutId) {
+    setSelectedWorkout(id);
+    setKm('');
+    setElevation('');
+    // Scroll in fondo dopo breve delay per permettere al layout di aggiornarsi
+    setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 100);
   }
 
   async function handleLog() {
@@ -61,12 +71,12 @@ export default function LogWorkoutScreen() {
       });
       if (Platform.OS !== 'web') Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       if (Platform.OS === 'web') {
-        alert(`Sport loggato 💪\n+${previewHearts} ❤️ (${previewCalories} kcal bruciate)`);
+        alert(`Sport loggato 💪\n+${previewHearts} ❤️`);
         router.push('/');
       } else {
         Alert.alert(
           'Sport loggato 💪',
-          `+${previewHearts} ❤️  (${previewCalories} kcal bruciate)\nBirresponsabilità: ${state.hearts} → ${state.hearts + previewHearts}`,
+          `+${previewHearts} ❤️\nBirresponsabilità: ${state.hearts} → ${state.hearts + previewHearts}`,
           [{ text: 'Forza!', onPress: () => router.push('/') }]
         );
       }
@@ -78,7 +88,7 @@ export default function LogWorkoutScreen() {
   }
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView ref={scrollRef} style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.sectionTitle}>Che sport hai fatto?</Text>
 
       <View style={styles.grid}>
@@ -88,21 +98,10 @@ export default function LogWorkoutScreen() {
             <TouchableOpacity
               key={workout.id}
               style={[styles.workoutCard, isSelected && styles.workoutCardSelected]}
-              onPress={() => {
-                setSelectedWorkout(workout.id);
-                setKm('');
-                setElevation('');
-              }}
+              onPress={() => handleSelectWorkout(workout.id)}
             >
               <Text style={styles.workoutIcon}>{workout.icon}</Text>
               <Text style={styles.workoutName}>{workout.name}</Text>
-              <Text style={styles.workoutMeta}>
-                {workout.inputType === 'duration'
-                  ? `${workout.calPerMin} kcal/min`
-                  : workout.inputType === 'km'
-                  ? `${workout.calPerKm} kcal/km`
-                  : 'km + dislivello'}
-              </Text>
             </TouchableOpacity>
           );
         })}
@@ -174,9 +173,6 @@ export default function LogWorkoutScreen() {
               <Text style={styles.inputUnit}>m ↑</Text>
             </View>
           </View>
-          <Text style={styles.formulaNote}>
-            Formula: 35 kcal/km + 0.2 kcal/m di dislivello
-          </Text>
         </>
       )}
 
@@ -189,7 +185,6 @@ export default function LogWorkoutScreen() {
             {selected.inputType === 'km' && km ? ` — ${km} km` : ''}
             {selected.inputType === 'km_elevation' && km ? ` — ${km} km${elevation ? `, +${elevation}m` : ''}` : ''}
           </Text>
-          <Text style={styles.previewLine}>🔥 {previewCalories} kcal bruciate</Text>
           <Text style={styles.previewHearts}>
             +{previewHearts} ❤️  ({state.hearts} → {state.hearts + previewHearts})
           </Text>
@@ -222,8 +217,7 @@ const styles = StyleSheet.create({
   },
   workoutCardSelected: { borderColor: '#2196F3', backgroundColor: '#F0F7FF' },
   workoutIcon: { fontSize: 32, marginBottom: 6 },
-  workoutName: { fontSize: 13, fontWeight: '600', color: '#1a1a1a', marginBottom: 2 },
-  workoutMeta: { fontSize: 11, color: '#aaa' },
+  workoutName: { fontSize: 13, fontWeight: '600', color: '#1a1a1a' },
 
   durationRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 24 },
   durationBtn: {
@@ -235,7 +229,7 @@ const styles = StyleSheet.create({
   durationTextSelected: { color: '#2196F3' },
 
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: 12, marginBottom: 24 },
-  kmElevRow: { flexDirection: 'row', gap: 16, marginBottom: 8 },
+  kmElevRow: { flexDirection: 'row', gap: 16, marginBottom: 24 },
   inputGroup: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 8 },
   numInput: {
     flex: 1, backgroundColor: '#fff', borderRadius: 12, padding: 16,
@@ -245,7 +239,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.04, shadowRadius: 3, elevation: 1,
   },
   inputUnit: { fontSize: 16, fontWeight: '700', color: '#2196F3' },
-  formulaNote: { fontSize: 11, color: '#bbb', marginBottom: 24, fontStyle: 'italic' },
 
   previewCard: {
     backgroundColor: '#fff', borderRadius: 16, padding: 20, marginBottom: 24,
