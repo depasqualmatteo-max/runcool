@@ -8,6 +8,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useApp } from '@/context/AppContext';
 import { useRouter } from 'expo-router';
+import { WORKOUT_MAP } from '@/constants/workouts';
 
 // ─── Badge system ────────────────────────────────────────────────────────────
 
@@ -112,6 +113,62 @@ function computeBadges(logs: any[], hearts: number): Badge[] {
   ];
 }
 
+// ─── Stats ────────────────────────────────────────────────────────────────────
+
+interface ActivityStat {
+  id: string;
+  icon: string;
+  label: string;
+  value: string;
+}
+
+function formatHours(minutes: number): string {
+  if (minutes < 60) return `${Math.round(minutes)} min`;
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
+  return m > 0 ? `${h}h ${m}min` : `${h}h`;
+}
+
+function computeStats(logs: any[]): ActivityStat[] {
+  const workouts = logs.filter(l => l.type === 'workout');
+
+  const kmCorsi = workouts
+    .filter(l => l.workoutId === 'corsa')
+    .reduce((s, l) => s + (l.km ?? 0), 0);
+
+  const dislivello = workouts
+    .filter(l => l.workoutId === 'camminata')
+    .reduce((s, l) => s + (l.elevationMeters ?? 0), 0);
+
+  const fixed: ActivityStat[] = [
+    { id: 'corsa',      icon: '🏃', label: 'Km corsi',   value: `${kmCorsi.toFixed(1)} km` },
+    { id: 'dislivello', icon: '⛰️', label: 'Dislivello', value: `${Math.round(dislivello)} m` },
+  ];
+
+  // Attività dinamiche: tutto tranne corsa e camminata (già nelle fisse)
+  const excluded = new Set(['corsa', 'camminata']);
+  const byActivity: Record<string, number> = {};
+  workouts.forEach(l => {
+    if (!excluded.has(l.workoutId)) {
+      byActivity[l.workoutId] = (byActivity[l.workoutId] ?? 0) + (l.durationMinutes ?? 0);
+    }
+  });
+
+  const dynamic: ActivityStat[] = Object.entries(byActivity)
+    .filter(([, mins]) => mins > 0)
+    .map(([id, mins]) => {
+      const def = WORKOUT_MAP[id as keyof typeof WORKOUT_MAP];
+      return {
+        id,
+        icon: def?.icon ?? '🏋️',
+        label: def?.name ?? id,
+        value: formatHours(mins),
+      };
+    });
+
+  return [...fixed, ...dynamic];
+}
+
 export default function ProfiloScreen() {
   const { user, logout, updateAvatar } = useAuth();
   const { state } = useApp();
@@ -121,6 +178,7 @@ export default function ProfiloScreen() {
   const badges = computeBadges(state.logs, state.hearts);
   const earnedBadges = badges.filter(b => b.earned);
   const lockedBadges = badges.filter(b => !b.earned);
+  const stats = computeStats(state.logs);
 
   async function pickAndUpload() {
     try {
@@ -247,6 +305,18 @@ export default function ProfiloScreen() {
         </View>
       )}
 
+      {/* Statistiche */}
+      <Text style={styles.sectionTitle}>📊 Le tue statistiche</Text>
+      <View style={styles.statsGrid}>
+        {stats.map(s => (
+          <View key={s.id} style={styles.statCard}>
+            <Text style={styles.statIcon}>{s.icon}</Text>
+            <Text style={styles.statValue}>{s.value}</Text>
+            <Text style={styles.statLabel}>{s.label}</Text>
+          </View>
+        ))}
+      </View>
+
       {/* Admin panel — solo per Matteo */}
       {user?.email === 'de.pasqual.matteo@gmail.com' && (
         <TouchableOpacity
@@ -330,6 +400,19 @@ const styles = StyleSheet.create({
   badgeName: { fontSize: 13, fontWeight: '800', color: '#1a1a1a', textAlign: 'center', marginBottom: 4 },
   badgeNameLocked: { color: '#ccc' },
   badgeDesc: { fontSize: 11, color: '#aaa', textAlign: 'center', lineHeight: 15 },
+
+  statsGrid: {
+    flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20,
+  },
+  statCard: {
+    backgroundColor: '#fff', borderRadius: 14, padding: 16,
+    alignItems: 'center', width: '47%',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
+  },
+  statIcon: { fontSize: 28, marginBottom: 6 },
+  statValue: { fontSize: 18, fontWeight: '800', color: '#1a1a1a', marginBottom: 2 },
+  statLabel: { fontSize: 11, color: '#aaa', textAlign: 'center' },
 
   adminBtn: {
     backgroundColor: '#1a1a1a',
