@@ -90,7 +90,8 @@
       "./plugins/withHealthConnectDelegate.js"
     ],
     "updates": {
-      "url": "https://u.expo.dev/730ff266-09d0-4b0a-94b0-9891663f40aa"
+      "url": "https://u.expo.dev/730ff266-09d0-4b0a-94b0-9891663f40aa",
+      "fallbackToCacheTimeout": 0
     },
     "runtimeVersion": {
       "policy": "appVersion"

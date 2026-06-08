@@ -28,6 +28,28 @@ interface AppContextValue {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
+// Notifica chi ha scelto "Notifica per ogni attività" quando un utente logga sport o drink
+async function notifyEveryActivitySubscribers(actorId: string, actorUsername: string, emoji: string, label: string) {
+  try {
+    const { data: subs } = await supabase
+      .from('profiles')
+      .select('id, push_token')
+      .eq('notif_pref', 'every_activity')
+      .not('push_token', 'is', null)
+      .neq('id', actorId);
+
+    if (!subs || subs.length === 0) return;
+    for (const s of subs) {
+      if (!s.push_token) continue;
+      await sendPushNotification(
+        s.push_token,
+        `RunCool ${emoji}`,
+        `${actorUsername} ha appena loggato: ${label}`,
+      );
+    }
+  } catch {}
+}
+
 function rowToLogEntry(row: any): LogEntry {
   if (row.type === 'drink') {
     return {
@@ -119,6 +141,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       .eq('id', user.id);
 
     setState((s) => ({ hearts: newHearts, logs: [rowToLogEntry(logRow), ...s.logs] }));
+
+    notifyEveryActivitySubscribers(user.id, user.username, '🍺', `${drink.icon ?? ''} ${drink.name} ×${quantity}`.trim());
   }
 
   async function logWorkout(params: LogWorkoutParams) {
@@ -177,6 +201,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     setState((s) => ({ hearts: newHearts, logs: [rowToLogEntry(logRow), ...s.logs] }));
 
+    notifyEveryActivitySubscribers(user.id, user.username, '💪', `${workout.icon ?? ''} ${workout.name}`.trim());
+
     // Salva country_code in background (non blocca se colonna non esiste)
     if (logRow?.id) {
       getCountryCode().then(cc => {
@@ -188,13 +214,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     if (user.clanId) {
       const { data: members } = await supabase
         .from('profiles')
-        .select('id, username, hearts, push_token')
+        .select('id, username, hearts, push_token, notif_pref')
         .eq('clan_id', user.clanId)
         .neq('id', user.id);
 
       if (members) {
         const overtaken = members.filter(
-          (m) => m.hearts !== null && m.hearts >= state.hearts && m.hearts < newHearts && m.push_token,
+          (m) => m.hearts !== null && m.hearts >= state.hearts && m.hearts < newHearts && m.push_token
+            && (m.notif_pref ?? 'important') !== 'none',
         );
         for (const m of overtaken) {
           await sendPushNotification(

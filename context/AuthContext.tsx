@@ -5,12 +5,15 @@ import { registerForPushNotifications, sendPushNotification, isMondayAndNotSentY
 
 const USER_CACHE_KEY = '@runcool_user_cache';
 
+export type NotifPref = 'none' | 'important' | 'evening_recap' | 'every_activity';
+
 export interface AuthUser {
   id: string;
   email: string;
   username: string;
   clanId: string | null;
   avatarUrl: string | null;
+  notifPref: NotifPref;
 }
 
 export interface ClanMember {
@@ -41,6 +44,7 @@ interface AuthContextValue {
   refreshClan: () => Promise<void>;
   updateAvatar: (url: string) => Promise<void>;
   updateUsername: (name: string) => Promise<void>;
+  updateNotifPref: (pref: NotifPref) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -57,7 +61,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (raw) {
         try {
           const cached = JSON.parse(raw) as AuthUser;
-          setUser(cached);
+          setUser({ notifPref: 'important', ...cached });
         } catch {}
       }
       // In ogni caso sblocca il loading (se c'è cache l'app si apre subito)
@@ -114,6 +118,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         username: profile.username,
         clanId: profile.clan_id,
         avatarUrl: profile.avatar_url ?? null,
+        notifPref: (profile.notif_pref as NotifPref) ?? 'important',
       };
       setUser(authUser);
       // Salva in cache per il prossimo avvio
@@ -302,9 +307,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser((prev) => prev ? { ...prev, username: name } : prev);
   }
 
+  async function updateNotifPref(pref: NotifPref) {
+    if (!user) return;
+    setUser((prev) => prev ? { ...prev, notifPref: pref } : prev);
+    AsyncStorage.getItem(USER_CACHE_KEY).then((raw) => {
+      if (!raw) return;
+      try {
+        const cached = JSON.parse(raw);
+        AsyncStorage.setItem(USER_CACHE_KEY, JSON.stringify({ ...cached, notifPref: pref })).catch(() => {});
+      } catch {}
+    });
+    const { error } = await supabase.from('profiles').update({ notif_pref: pref }).eq('id', user.id);
+    if (error) throw new Error(error.message);
+  }
+
   return (
     <AuthContext.Provider
-      value={{ user, clan, isLoading, login, register, logout, createClan, joinClan, leaveClan, refreshClan, updateAvatar, updateUsername }}
+      value={{ user, clan, isLoading, login, register, logout, createClan, joinClan, leaveClan, refreshClan, updateAvatar, updateUsername, updateNotifPref }}
     >
       {children}
     </AuthContext.Provider>
