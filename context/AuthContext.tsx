@@ -1,5 +1,9 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
+
+// Chiave usata da Supabase per salvare la sessione in AsyncStorage (vedi lib/supabase.ts)
+const SUPABASE_SESSION_KEY = 'sb-qqpxtxcmssxxvajfagie-auth-token';
 import { registerForPushNotifications, sendPushNotification, isMondayAndNotSentYet } from '@/lib/notifications';
 
 export type NotifPref = 'none' | 'important' | 'evening_recap' | 'every_activity';
@@ -53,33 +57,53 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const registering = useRef(false);
 
   useEffect(() => {
-    let settled = false;
+    let cancelled = false;
 
-    // Timeout di sicurezza: se entro 8s la sessione non risponde, sblocca comunque l'app
-    // (mostra login — l'utente potrà comunque ri-autenticarsi se serve)
-    const safetyTimeout = setTimeout(() => {
-      if (!settled) {
-        settled = true;
-        setIsLoading(false);
-      }
-    }, 8000);
+    async function init() {
+      // Controlla se esiste una sessione salvata localmente: se sì, l'utente ERA loggato.
+      // In quel caso non lo mandiamo mai al login solo perché la rete è lenta a rispondere:
+      // continuiamo a ritentare (mostrando solo lo spinner) finché getSession non risponde davvero.
+      let hasStoredSession = false;
+      try {
+        const raw = await AsyncStorage.getItem(SUPABASE_SESSION_KEY);
+        hasStoredSession = !!raw;
+      } catch {}
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (settled) return; // il timeout ha già sbloccato l'app, ignora risposta tardiva
-      settled = true;
-      clearTimeout(safetyTimeout);
-      if (session?.user) {
-        loadUserData(session.user.id, session.user.email!);
-      } else {
-        setIsLoading(false);
+      const maxAttempts = hasStoredSession ? 6 : 1;
+      const timeoutMs = 8000;
+
+      for (let attempt = 0; attempt < maxAttempts; attempt++) {
+        if (cancelled) return;
+        try {
+          const result: any = await Promise.race([
+            supabase.auth.getSession(),
+            new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), timeoutMs)),
+          ]);
+          if (cancelled) return;
+          const session = result?.data?.session;
+          if (session?.user) {
+            await loadUserData(session.user.id, session.user.email!);
+            return;
+          }
+          if (!hasStoredSession) {
+            setIsLoading(false);
+            return;
+          }
+          // C'era una sessione salvata ma getSession non l'ha restituita: ritenta
+        } catch {
+          if (!hasStoredSession) {
+            setIsLoading(false);
+            return;
+          }
+          // Sessione salvata presente ma getSession lenta/in errore: ritenta
+        }
       }
-    }).catch(() => {
-      if (!settled) {
-        settled = true;
-        clearTimeout(safetyTimeout);
-        setIsLoading(false);
-      }
-    });
+
+      // Tentativi esauriti: sblocca comunque (mostrerà login se davvero non c'è sessione)
+      if (!cancelled) setIsLoading(false);
+    }
+
+    init();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (_event, session) => {
@@ -94,7 +118,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     );
 
-    return () => subscription.unsubscribe();
+    return () => { cancelled = true; subscription.unsubscribe(); };
   }, []);
 
   async function loadUserData(userId: string, email: string) {
