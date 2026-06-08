@@ -1,9 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { supabase } from '@/lib/supabase';
 import { registerForPushNotifications, sendPushNotification, isMondayAndNotSentYet } from '@/lib/notifications';
-
-const USER_CACHE_KEY = '@runcool_user_cache';
 
 export type NotifPref = 'none' | 'important' | 'evening_recap' | 'every_activity';
 
@@ -56,28 +53,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const registering = useRef(false);
 
   useEffect(() => {
-    // 1. Leggi subito la cache locale → apre l'app istantaneamente
-    AsyncStorage.getItem(USER_CACHE_KEY).then((raw) => {
-      if (raw) {
-        try {
-          const cached = JSON.parse(raw) as AuthUser;
-          setUser({ notifPref: 'important', ...cached });
-        } catch {}
-      }
-      // In ogni caso sblocca il loading (se c'è cache l'app si apre subito)
-      setIsLoading(false);
+    let settled = false;
 
-      // 2. Verifica la sessione reale in background (aggiorna dati o forza logout)
-      supabase.auth.getSession().then(({ data: { session } }) => {
-        if (session?.user) {
-          loadUserData(session.user.id, session.user.email!);
-        } else {
-          // Nessuna sessione valida: pulisci cache e vai al login
-          AsyncStorage.removeItem(USER_CACHE_KEY);
-          setUser(null);
-          setClan(null);
-        }
-      });
+    // Timeout di sicurezza: se entro 8s la sessione non risponde, sblocca comunque l'app
+    // (mostra login — l'utente potrà comunque ri-autenticarsi se serve)
+    const safetyTimeout = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        setIsLoading(false);
+      }
+    }, 8000);
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (settled) return; // il timeout ha già sbloccato l'app, ignora risposta tardiva
+      settled = true;
+      clearTimeout(safetyTimeout);
+      if (session?.user) {
+        loadUserData(session.user.id, session.user.email!);
+      } else {
+        setIsLoading(false);
+      }
+    }).catch(() => {
+      if (!settled) {
+        settled = true;
+        clearTimeout(safetyTimeout);
+        setIsLoading(false);
+      }
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
@@ -86,7 +87,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (session?.user) {
           await loadUserData(session.user.id, session.user.email!);
         } else {
-          AsyncStorage.removeItem(USER_CACHE_KEY);
           setUser(null);
           setClan(null);
           setIsLoading(false);
@@ -110,7 +110,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (data) { profile = data; break; }
         await new Promise((r) => setTimeout(r, 600));
       }
-      if (!profile) { return; }
+      if (!profile) { setIsLoading(false); return; }
 
       const authUser: AuthUser = {
         id: userId,
@@ -121,8 +121,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         notifPref: (profile.notif_pref as NotifPref) ?? 'important',
       };
       setUser(authUser);
-      // Salva in cache per il prossimo avvio
-      AsyncStorage.setItem(USER_CACHE_KEY, JSON.stringify(authUser)).catch(() => {});
+      setIsLoading(false);
 
       if (profile.clan_id) {
         await loadClan(profile.clan_id);
@@ -141,7 +140,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         }
       });
 
-    } catch {}
+    } catch {
+      setIsLoading(false);
+    }
   }
 
   async function sendWeeklyRecap(userId: string, clanId: string | null, myToken: string) {
@@ -310,13 +311,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   async function updateNotifPref(pref: NotifPref) {
     if (!user) return;
     setUser((prev) => prev ? { ...prev, notifPref: pref } : prev);
-    AsyncStorage.getItem(USER_CACHE_KEY).then((raw) => {
-      if (!raw) return;
-      try {
-        const cached = JSON.parse(raw);
-        AsyncStorage.setItem(USER_CACHE_KEY, JSON.stringify({ ...cached, notifPref: pref })).catch(() => {});
-      } catch {}
-    });
     const { error } = await supabase.from('profiles').update({ notif_pref: pref }).eq('id', user.id);
     if (error) throw new Error(error.message);
   }
