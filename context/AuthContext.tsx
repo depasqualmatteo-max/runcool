@@ -60,16 +60,38 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     let cancelled = false;
 
     async function init() {
-      // Controlla se esiste una sessione salvata localmente: se sì, l'utente ERA loggato.
-      // In quel caso non lo mandiamo mai al login solo perché la rete è lenta a rispondere:
-      // continuiamo a ritentare (mostrando solo lo spinner) finché getSession non risponde davvero.
+      // Se c'è una sessione salvata localmente, l'utente ERA loggato:
+      // aspettiamo senza timeout finché getSession non risponde — niente login per rete lenta.
+      // Se non c'è sessione salvata, timeout veloce (8s) e vai al login.
       let hasStoredSession = false;
       try {
         const raw = await AsyncStorage.getItem(SUPABASE_SESSION_KEY);
         hasStoredSession = !!raw;
       } catch {}
 
-      const maxAttempts = hasStoredSession ? 6 : 1;
+      if (hasStoredSession) {
+        // Aspetta senza limiti finché la sessione non torna
+        while (!cancelled) {
+          try {
+            const { data } = await supabase.auth.getSession();
+            if (cancelled) return;
+            if (data?.session?.user) {
+              await loadUserData(data.session.user.id, data.session.user.email!);
+              return;
+            }
+            // getSession ha risposto ma senza sessione: l'utente si è davvero sloggato
+            break;
+          } catch {
+            // Errore di rete: aspetta 2s e riprova
+            await new Promise(r => setTimeout(r, 2000));
+          }
+        }
+        if (!cancelled) setIsLoading(false);
+        return;
+      }
+
+      // Nessuna sessione salvata: un solo tentativo con timeout
+      const maxAttempts = 1;
       const timeoutMs = 8000;
 
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
@@ -85,17 +107,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             await loadUserData(session.user.id, session.user.email!);
             return;
           }
-          if (!hasStoredSession) {
-            setIsLoading(false);
-            return;
-          }
-          // C'era una sessione salvata ma getSession non l'ha restituita: ritenta
+          setIsLoading(false);
+          return;
         } catch {
-          if (!hasStoredSession) {
-            setIsLoading(false);
-            return;
-          }
-          // Sessione salvata presente ma getSession lenta/in errore: ritenta
+          setIsLoading(false);
+          return;
+          // placeholder
         }
       }
 
