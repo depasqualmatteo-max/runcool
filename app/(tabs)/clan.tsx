@@ -265,7 +265,7 @@ export default function ClanScreen() {
     if (status !== 'granted') { Alert.alert('Permesso negato', 'Serve accesso alla galleria'); return; }
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true, aspect: [1, 1], quality: 0.7,
+      allowsEditing: true, aspect: [16, 9], quality: 0.8,
     });
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
@@ -290,28 +290,35 @@ export default function ClanScreen() {
         <>
           {/* Clan info */}
           <View style={styles.clanCard}>
-            {/* Immagine clan */}
-            <TouchableOpacity onPress={pickClanImage} style={styles.clanAvatarWrapper} activeOpacity={isOwner ? 0.7 : 1}>
+            {/* Sfondo immagine */}
+            <TouchableOpacity onPress={pickClanImage} activeOpacity={isOwner ? 0.85 : 1} style={styles.clanBannerWrapper}>
               {clan.avatarUrl ? (
-                <Image source={{ uri: clan.avatarUrl }} style={styles.clanAvatar} />
+                <Image source={{ uri: clan.avatarUrl }} style={styles.clanBanner} />
               ) : (
-                <View style={styles.clanAvatarPlaceholder}>
-                  <Text style={styles.clanAvatarPlaceholderText}>{isOwner ? '📷' : '🐷'}</Text>
+                <View style={styles.clanBannerPlaceholder}>
+                  <Text style={styles.clanBannerPlaceholderText}>{isOwner ? '📷  Aggiungi foto' : '🐷'}</Text>
                 </View>
               )}
+              {/* Overlay scuro per leggere il testo */}
+              <View style={styles.clanBannerOverlay} />
+              {/* Nome sopra l'immagine */}
+              <Text style={styles.clanNameOnBanner}>{clan.name}</Text>
+              <Text style={styles.clanMembersOnBanner}>{clan.members.length} maialini</Text>
               {isOwner && (
-                <View style={styles.clanAvatarEdit}>
-                  <Text style={{ fontSize: 10, color: '#fff' }}>✎</Text>
+                <View style={styles.clanBannerEditBadge}>
+                  <Text style={{ fontSize: 11, color: '#fff' }}>✎</Text>
                 </View>
               )}
             </TouchableOpacity>
-            <Text style={styles.clanName}>{clan.name}</Text>
-            <View style={styles.clanDivider} />
-            <Text style={styles.clanScoreLabel}>Punteggio totale del clan</Text>
-            <Text style={[styles.clanScore, { color: clanScore >= 0 ? '#E8445A' : '#ff3b30' }]}>
-              {clanScore > 0 ? `+${Math.round(clanScore)}` : Math.round(clanScore)} ❤️
-            </Text>
-            <Text style={styles.clanMembersCount}>{clan.members.length} maialini</Text>
+
+            {/* Punteggio sotto */}
+            <View style={styles.clanScoreSection}>
+              <Text style={styles.clanScoreLabel}>Punteggio totale</Text>
+              <Text style={[styles.clanScore, { color: clanScore >= 0 ? '#E8445A' : '#ff3b30' }]}>
+                {clanScore > 0 ? `+${Math.round(clanScore)}` : Math.round(clanScore)} ❤️
+              </Text>
+            </View>
+
             {/* Codice in basso a destra */}
             <TouchableOpacity style={styles.codeChip} onPress={copyCode}>
               <Text style={styles.codeText}>#{clan.code} 📋</Text>
@@ -528,26 +535,36 @@ const styles = StyleSheet.create({
   profileScore: { fontSize: 28, fontWeight: '800' },
 
   clanCard: {
-    backgroundColor: '#fff', borderRadius: 20, padding: 24, marginBottom: 20,
+    backgroundColor: '#fff', borderRadius: 20, marginBottom: 20, overflow: 'hidden',
     borderWidth: 2, borderColor: '#FFD700',
     shadowColor: '#FFD700', shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.15, shadowRadius: 10, elevation: 4,
-    alignItems: 'center',
   },
-  clanAvatarWrapper: { marginBottom: 12, position: 'relative' },
-  clanAvatar: { width: 80, height: 80, borderRadius: 40, borderWidth: 2, borderColor: '#FFD700' },
-  clanAvatarPlaceholder: {
-    width: 80, height: 80, borderRadius: 40,
-    backgroundColor: '#FFF8E1', borderWidth: 2, borderColor: '#FFD700',
-    alignItems: 'center', justifyContent: 'center',
+  clanBannerWrapper: { width: '100%', height: 150, position: 'relative', justifyContent: 'flex-end' },
+  clanBanner: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%' },
+  clanBannerPlaceholder: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: '#FFF8E1', alignItems: 'center', justifyContent: 'center',
   },
-  clanAvatarPlaceholderText: { fontSize: 32 },
-  clanAvatarEdit: {
-    position: 'absolute', bottom: 0, right: 0,
-    backgroundColor: '#FFD700', borderRadius: 10, width: 20, height: 20,
-    alignItems: 'center', justifyContent: 'center',
+  clanBannerPlaceholderText: { fontSize: 16, color: '#b8860b', fontWeight: '700' },
+  clanBannerOverlay: {
+    position: 'absolute', top: 0, left: 0, right: 0, bottom: 0,
+    backgroundColor: 'rgba(0,0,0,0.35)',
   },
-  clanName: { fontSize: 24, fontWeight: '900', color: '#1a1a1a', textAlign: 'center', marginBottom: 0 },
+  clanNameOnBanner: {
+    color: '#fff', fontSize: 24, fontWeight: '900',
+    paddingHorizontal: 16, paddingBottom: 4, textShadowColor: 'rgba(0,0,0,0.5)', textShadowRadius: 4,
+  },
+  clanMembersOnBanner: {
+    color: 'rgba(255,255,255,0.75)', fontSize: 12, fontWeight: '600',
+    paddingHorizontal: 16, paddingBottom: 12,
+  },
+  clanBannerEditBadge: {
+    position: 'absolute', top: 10, right: 10,
+    backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 12, paddingHorizontal: 8, paddingVertical: 4,
+  },
+  clanScoreSection: { alignItems: 'center', paddingVertical: 16, paddingBottom: 8 },
+  clanName: { fontSize: 24, fontWeight: '900', color: '#1a1a1a', textAlign: 'center' },
   codeChip: {
     position: 'absolute', bottom: 14, right: 14,
     backgroundColor: '#f5f5f5', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5,
