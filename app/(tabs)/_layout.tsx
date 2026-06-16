@@ -121,13 +121,11 @@ function ProfileButton() {
                 </TouchableOpacity>
               );
             })}
-          </View>
-
             <View style={menuStyles.divider} />
             <TouchableOpacity style={menuStyles.debugRow} onPress={testNotifiche}>
               <Text style={menuStyles.debugText}>🔔 Ripristina notifiche</Text>
             </TouchableOpacity>
-        </View>
+          </View>
         </TouchableOpacity>
       </Modal>
     </>
