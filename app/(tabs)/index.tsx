@@ -9,6 +9,11 @@ import { it } from 'date-fns/locale';
 import { isHealthAvailable } from '@/lib/health';
 import { UserAvatar } from '@/components/UserAvatar';
 import { checkAndAwardMentality } from '@/lib/mentality';
+import {
+  getTodayDailyMissions, getDailyProgress, SEQ_MISSIONS, calcSeqProgress,
+  advanceSeqMission, incrementDailyMissionsDone,
+  type DailyProgress, type SeqProgress,
+} from '@/lib/personalMissions';
 
 function getMotivationalPhrase(hearts: number): string {
   if (hearts <= -50) return 'Situazione critica... il fegato chiede pietà';
@@ -49,6 +54,35 @@ export default function DashboardScreen() {
 
   const clanScore = clan ? clan.members.reduce((sum, m) => sum + Math.round(m.hearts), 0) : null;
   const tandemScore = tandem ? tandem.members.reduce((s, m) => s + Math.round(m.hearts), 0) : 0;
+
+  // ─── Missioni personali ───
+  const dailyMissionsDef = getTodayDailyMissions();
+  const [dailyProgress, setDailyProgress] = useState<DailyProgress | null>(null);
+  const [currentMission, setCurrentMission] = useState(1);
+  const [seqProgress, setSeqProgress] = useState<SeqProgress | null>(null);
+  const [seqLoading, setSeqLoading] = useState(true);
+
+  useEffect(() => {
+    if (!user) return;
+    // Carica progresso giornaliero
+    getDailyProgress(user.id).then(setDailyProgress);
+    // Carica missione sequenziale corrente
+    supabase.from('profiles').select('current_mission').eq('id', user.id).single().then(({ data }) => {
+      const n = data?.current_mission ?? 1;
+      setCurrentMission(n);
+      const mission = SEQ_MISSIONS[n - 1];
+      if (mission) {
+        calcSeqProgress(mission, user.id).then(p => {
+          setSeqProgress(p);
+          setSeqLoading(false);
+          // Auto-avanza se completata
+          if (p.completed) advanceSeqMission(user.id, n);
+        });
+      } else {
+        setSeqLoading(false);
+      }
+    });
+  }, [user?.id]);
 
   // ─── Mentality daily reward ───
   const [mentalityBanner, setMentalityBanner] = useState<string | null>(null);
@@ -139,6 +173,96 @@ export default function DashboardScreen() {
           </Text>
         </TouchableOpacity>
       )}
+
+      {/* ── MISSIONI PERSONALI ── */}
+      <Text style={styles.sectionTitle}>Missioni di oggi</Text>
+
+      {/* 3 card giornaliere affiancate */}
+      <View style={mStyles.dailyRow}>
+        {/* Corsa */}
+        {(() => {
+          const done = dailyProgress ? dailyProgress.runKm >= dailyMissionsDef.runKm : false;
+          const pct = dailyProgress ? Math.min(dailyProgress.runKm / dailyMissionsDef.runKm, 1) : 0;
+          return (
+            <View style={[mStyles.dailyCard, done && mStyles.dailyCardDone]}>
+              <Text style={mStyles.dailyEmoji}>🏃</Text>
+              <Text style={mStyles.dailyTarget}>{dailyMissionsDef.runKm} km</Text>
+              <Text style={mStyles.dailyLabel}>Corsa</Text>
+              <View style={mStyles.miniBarBg}>
+                <View style={[mStyles.miniBarFill, { width: `${Math.round(pct * 100)}%` as any, backgroundColor: done ? '#4CAF50' : '#2196F3' }]} />
+              </View>
+              {done && <Text style={mStyles.doneCheck}>✓</Text>}
+            </View>
+          );
+        })()}
+
+        {/* Attività */}
+        {(() => {
+          const done = dailyProgress ? dailyProgress.activityMin >= dailyMissionsDef.activityMin : false;
+          const pct = dailyProgress ? Math.min(dailyProgress.activityMin / dailyMissionsDef.activityMin, 1) : 0;
+          const label = dailyMissionsDef.activityMin >= 60
+            ? `${dailyMissionsDef.activityMin / 60}h`
+            : `${dailyMissionsDef.activityMin} min`;
+          return (
+            <View style={[mStyles.dailyCard, done && mStyles.dailyCardDone]}>
+              <Text style={mStyles.dailyEmoji}>⏱️</Text>
+              <Text style={mStyles.dailyTarget}>{label}</Text>
+              <Text style={mStyles.dailyLabel}>Attività</Text>
+              <View style={mStyles.miniBarBg}>
+                <View style={[mStyles.miniBarFill, { width: `${Math.round(pct * 100)}%` as any, backgroundColor: done ? '#4CAF50' : '#FF9800' }]} />
+              </View>
+              {done && <Text style={mStyles.doneCheck}>✓</Text>}
+            </View>
+          );
+        })()}
+
+        {/* No drink */}
+        {(() => {
+          const done = dailyProgress?.noDrink ?? false;
+          return (
+            <View style={[mStyles.dailyCard, done && mStyles.dailyCardDone]}>
+              <Text style={mStyles.dailyEmoji}>{done ? '✅' : '🍺'}</Text>
+              <Text style={mStyles.dailyTarget}>{done ? 'Fatto!' : 'Oggi'}</Text>
+              <Text style={mStyles.dailyLabel}>No drink</Text>
+              <View style={mStyles.miniBarBg}>
+                <View style={[mStyles.miniBarFill, { width: done ? '100%' : '0%', backgroundColor: '#4CAF50' }]} />
+              </View>
+              {done && <Text style={mStyles.doneCheck}>✓</Text>}
+            </View>
+          );
+        })()}
+      </View>
+
+      {/* Missione sequenziale */}
+      <Text style={styles.sectionTitle}>Missioni di vita</Text>
+      {seqLoading ? (
+        <View style={mStyles.seqCard}><Text style={{ color: '#aaa', textAlign: 'center' }}>Caricamento...</Text></View>
+      ) : currentMission > 100 ? (
+        <View style={mStyles.seqCard}>
+          <Text style={{ fontSize: 24, textAlign: 'center' }}>🏆</Text>
+          <Text style={{ fontSize: 15, fontWeight: '800', color: '#1a1a1a', textAlign: 'center', marginTop: 8 }}>Tutte le 100 missioni completate!</Text>
+        </View>
+      ) : (() => {
+        const m = SEQ_MISSIONS[currentMission - 1];
+        const p = seqProgress;
+        const pct = p ? Math.round(p.pct * 100) : 0;
+        return (
+          <View style={mStyles.seqCard}>
+            <View style={mStyles.seqHeader}>
+              <View style={mStyles.seqBadge}><Text style={mStyles.seqBadgeText}>#{currentMission}</Text></View>
+              <Text style={mStyles.seqLabel} numberOfLines={2}>{m?.label}</Text>
+              <View style={mStyles.seqTokenBadge}><Text style={mStyles.seqTokenText}>🎟 1</Text></View>
+            </View>
+            <View style={mStyles.seqBarBg}>
+              <View style={[mStyles.seqBarFill, { width: `${pct}%` as any, backgroundColor: p?.completed ? '#4CAF50' : '#FFD700' }]} />
+            </View>
+            <View style={mStyles.seqFooter}>
+              <Text style={mStyles.seqProgressText}>{p?.displayValue ?? '...'}</Text>
+              {p?.completed && <Text style={mStyles.seqDone}>Completata! →{currentMission + 1}</Text>}
+            </View>
+          </View>
+        );
+      })()}
 
       {/* 3. Tandem card — diagonale */}
       {tandem && tandem.members.length >= 2 && (
@@ -352,4 +476,41 @@ const styles = StyleSheet.create({
   recentName: { fontSize: 14, fontWeight: '600', color: '#1a1a1a' },
   recentTime: { fontSize: 12, color: '#aaa', marginTop: 2 },
   recentDelta: { fontSize: 14, fontWeight: '700' },
+});
+
+const mStyles = StyleSheet.create({
+  // Daily missions row
+  dailyRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+  dailyCard: {
+    flex: 1, backgroundColor: '#fff', borderRadius: 14, padding: 10,
+    alignItems: 'center', borderWidth: 1.5, borderColor: '#eee',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1,
+  },
+  dailyCardDone: { borderColor: '#4CAF50', backgroundColor: '#f0fff4' },
+  dailyEmoji: { fontSize: 22, marginBottom: 4 },
+  dailyTarget: { fontSize: 15, fontWeight: '900', color: '#1a1a1a' },
+  dailyLabel: { fontSize: 10, color: '#aaa', fontWeight: '600', marginBottom: 6, textTransform: 'uppercase' },
+  miniBarBg: { width: '100%', height: 5, backgroundColor: '#f0f0f0', borderRadius: 3, overflow: 'hidden', marginBottom: 4 },
+  miniBarFill: { height: 5, borderRadius: 3 },
+  doneCheck: { fontSize: 12, color: '#4CAF50', fontWeight: '800' },
+
+  // Sequential mission card
+  seqCard: {
+    backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 16,
+    borderWidth: 1.5, borderColor: '#eee',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
+  },
+  seqHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 12 },
+  seqBadge: {
+    backgroundColor: '#1a1a1a', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, flexShrink: 0,
+  },
+  seqBadgeText: { fontSize: 12, fontWeight: '900', color: '#FFD700' },
+  seqLabel: { flex: 1, fontSize: 14, fontWeight: '700', color: '#1a1a1a', lineHeight: 20 },
+  seqTokenBadge: { backgroundColor: '#FFF8E1', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: '#FFD700', flexShrink: 0 },
+  seqTokenText: { fontSize: 12, fontWeight: '800', color: '#b8860b' },
+  seqBarBg: { height: 8, backgroundColor: '#f0f0f0', borderRadius: 4, overflow: 'hidden', marginBottom: 8 },
+  seqBarFill: { height: 8, borderRadius: 4 },
+  seqFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  seqProgressText: { fontSize: 12, color: '#888' },
+  seqDone: { fontSize: 12, fontWeight: '800', color: '#4CAF50' },
 });
