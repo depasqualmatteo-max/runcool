@@ -309,6 +309,10 @@ export default function ClanScreen() {
                   <Text style={{ fontSize: 11, color: '#fff' }}>✎</Text>
                 </View>
               )}
+              {/* Codice in basso a destra sull'immagine */}
+              <TouchableOpacity style={styles.codeChip} onPress={copyCode}>
+                <Text style={styles.codeText}>#{clan.code} 📋</Text>
+              </TouchableOpacity>
             </TouchableOpacity>
 
             {/* Punteggio sotto */}
@@ -319,10 +323,6 @@ export default function ClanScreen() {
               </Text>
             </View>
 
-            {/* Codice in basso a destra */}
-            <TouchableOpacity style={styles.codeChip} onPress={copyCode}>
-              <Text style={styles.codeText}>#{clan.code} 📋</Text>
-            </TouchableOpacity>
           </View>
 
           {/* Missioni mensili */}
@@ -566,10 +566,10 @@ const styles = StyleSheet.create({
   clanScoreSection: { alignItems: 'center', paddingVertical: 16, paddingBottom: 8 },
   clanName: { fontSize: 24, fontWeight: '900', color: '#1a1a1a', textAlign: 'center' },
   codeChip: {
-    position: 'absolute', bottom: 14, right: 14,
-    backgroundColor: '#f5f5f5', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5,
+    position: 'absolute', bottom: 10, right: 10,
+    backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5,
   },
-  codeText: { fontSize: 11, fontWeight: '700', color: '#aaa' },
+  codeText: { fontSize: 11, fontWeight: '700', color: 'rgba(255,255,255,0.85)' },
   clanDivider: { height: 1, backgroundColor: '#f0f0f0', width: '100%', marginVertical: 14 },
   clanScoreLabel: { fontSize: 11, color: '#aaa', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
   clanScore: { fontSize: 48, fontWeight: '900', marginBottom: 4 },
