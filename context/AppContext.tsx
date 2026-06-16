@@ -35,12 +35,12 @@ const AppContext = createContext<AppContextValue | null>(null);
 // none           → niente
 
 const SPORT_MESSAGES = [
-  (u: string) => `Ei ei! 🐷 ${u} sta grufolando più di te`,
-  (u: string) => `${u} si è alzato dal divano. Tu ancora no? 🐷`,
-  (u: string) => `🏃 ${u} ha appena bruciato calorie. E tu?`,
-  (u: string) => `${u} si sta allenando come un maiale in forma 🐷💨`,
-  (u: string) => `Occhio! ${u} ti sta sorpassando in classifica 👀`,
-  (u: string) => `${u} ha sudato. La domanda è: hai sudato anche tu? 💦`,
+  (u: string) => `Oink oink! 🐷 ${u} sta grufolando più di te`,
+  (u: string) => `${u} ha smesso di rotolarsi nel fango e si è messo a correre 🐷💨`,
+  (u: string) => `Questo maialino di ${u} si sta allenando… e tu? 🐽`,
+  (u: string) => `${u} sta sudando come un maialino in sauna 🐷🔥`,
+  (u: string) => `Attenzione! Il maiale ${u} ti sta tallonando in classifica 🐷👟`,
+  (u: string) => `${u} ha appena guadagnato cuori. Stai diventando il maiale più pigro del clan? 🐷`,
 ];
 
 async function notifyWorkout(actorId: string, actorUsername: string, workoutLabel: string) {
