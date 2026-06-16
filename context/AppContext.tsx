@@ -36,7 +36,7 @@ const AppContext = createContext<AppContextValue | null>(null);
 
 const SPORT_MESSAGES = [
   (u: string) => `Ei ei! 🐷 ${u} sta grufolando più di te`,
-  (u: string) => `${u} è già in pista mentre tu sei sul divano 🛋️`,
+  (u: string) => `${u} si è alzato dal divano. Tu ancora no? 🐷`,
   (u: string) => `🏃 ${u} ha appena bruciato calorie. E tu?`,
   (u: string) => `${u} si sta allenando come un maiale in forma 🐷💨`,
   (u: string) => `Occhio! ${u} ti sta sorpassando in classifica 👀`,
