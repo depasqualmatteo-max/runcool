@@ -8,6 +8,7 @@ import { useAuth } from '@/context/AuthContext';
 import { useRouter } from 'expo-router';
 import { startOfWeek, endOfWeek, format } from 'date-fns';
 import { UserAvatar } from '@/components/UserAvatar';
+import { getTandemWeekMissions, calcTandemProgress, MissionDef, MissionProgress } from '@/lib/missions';
 
 interface ProfileResult { id: string; username: string; tandem_id: string | null; avatar_url?: string | null }
 interface PendingInvite {
@@ -16,6 +17,46 @@ interface PendingInvite {
   creatorUsername: string;
   creatorAvatar: string | null;
 }
+
+function MissionCard({ def, progress }: { def: MissionDef; progress: MissionProgress }) {
+  const pct = Math.min(progress.pct, 1);
+  const done = progress.completed;
+  return (
+    <View style={[missionStyles.card, done && missionStyles.cardDone]}>
+      <View style={missionStyles.header}>
+        <Text style={missionStyles.label} numberOfLines={2}>{def.emoji} {def.label}</Text>
+        <View style={missionStyles.tokenBadge}>
+          <Text style={missionStyles.tokenText}>🎟 {def.tokens}</Text>
+        </View>
+      </View>
+      <View style={missionStyles.barBg}>
+        <View style={[missionStyles.barFill, { width: `${Math.round(pct * 100)}%` as any, backgroundColor: done ? '#4CAF50' : '#FFD700' }]} />
+      </View>
+      <View style={missionStyles.footer}>
+        <Text style={missionStyles.progressText}>{progress.displayValue}</Text>
+        {done && <Text style={missionStyles.doneText}>✅ Completata!</Text>}
+      </View>
+    </View>
+  );
+}
+
+const missionStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#fff', borderRadius: 14, padding: 14, marginBottom: 10,
+    borderWidth: 1.5, borderColor: '#eee',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
+  },
+  cardDone: { borderColor: '#4CAF50', backgroundColor: '#f0fff4' },
+  header: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 10, gap: 8 },
+  label: { flex: 1, fontSize: 13, fontWeight: '700', color: '#1a1a1a', lineHeight: 18 },
+  tokenBadge: { backgroundColor: '#FFF8E1', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: '#FFD700', flexShrink: 0 },
+  tokenText: { fontSize: 12, fontWeight: '800', color: '#b8860b' },
+  barBg: { height: 8, backgroundColor: '#f0f0f0', borderRadius: 4, overflow: 'hidden', marginBottom: 8 },
+  barFill: { height: 8, borderRadius: 4 },
+  footer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  progressText: { fontSize: 11, color: '#888', flex: 1 },
+  doneText: { fontSize: 12, fontWeight: '700', color: '#4CAF50' },
+});
 
 export default function TandemScreen() {
   const { user } = useAuth();
@@ -38,6 +79,8 @@ export default function TandemScreen() {
   const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const router = useRouter();
   const [membersModal, setMembersModal] = useState<{ title: string; members: { id: string; username: string; hearts: number; avatar_url?: string | null }[] } | null>(null);
+  const [missions, setMissions] = useState<{ def: MissionDef; progress: MissionProgress }[]>([]);
+  const [missionsLoading, setMissionsLoading] = useState(false);
 
   async function showTandemMembers(tandemId: string, tandemName: string) {
     const { data } = await supabase
@@ -93,9 +136,33 @@ export default function TandemScreen() {
       }
 
       await loadMatchup(tandem.id);
+      // Carica missioni settimanali
+      const memberData = members ?? [];
+      const memberIds = memberData.map((m: any) => {
+        // ricava id dalla query: potremmo non averlo qui; usiamo una query separata
+        return null;
+      }).filter(Boolean);
+      // Recupera gli id dei membri dal DB
+      const { data: memberProfiles } = await supabase.from('profiles').select('id').eq('tandem_id', tandem.id);
+      if (memberProfiles) {
+        await loadMissions(memberProfiles.map((p: any) => p.id));
+      }
     } finally {
       setLoading(false);
     }
+  }
+
+  async function loadMissions(memberIds: string[]) {
+    setMissionsLoading(true);
+    try {
+      const now = new Date();
+      const weekStart = format(startOfWeek(now, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+      const weekEnd = format(endOfWeek(now, { weekStartsOn: 1 }), 'yyyy-MM-dd');
+      const defs = getTandemWeekMissions(weekStart);
+      const progresses = await Promise.all(defs.map(d => calcTandemProgress(d, memberIds, weekStart, weekEnd)));
+      setMissions(defs.map((d, i) => ({ def: d, progress: progresses[i] })));
+    } catch {}
+    finally { setMissionsLoading(false); }
   }
 
   // =============================================
@@ -406,6 +473,16 @@ export default function TandemScreen() {
               <Text style={styles.leaveBtnText}>Lascia tandem</Text>
             </TouchableOpacity>
           </View>
+
+          {/* Missioni settimanali */}
+          <Text style={styles.sectionTitle}>🎯 Missioni settimanali</Text>
+          {missionsLoading ? (
+            <ActivityIndicator color="#FFD700" style={{ marginBottom: 12 }} />
+          ) : (
+            missions.map(({ def, progress }, i) => (
+              <MissionCard key={i} def={def} progress={progress} />
+            ))
+          )}
 
           {/* Sfida settimanale */}
           <Text style={styles.sectionTitle}>⚔️ Sfida settimanale</Text>

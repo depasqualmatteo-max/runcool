@@ -9,6 +9,47 @@ import { useApp } from '@/context/AppContext';
 import { useRouter } from 'expo-router';
 import { format } from 'date-fns';
 import { UserAvatar } from '@/components/UserAvatar';
+import { getClanMonthMissions, calcClanProgress, MissionDef, MissionProgress } from '@/lib/missions';
+
+function ClanMissionCard({ def, progress }: { def: MissionDef; progress: MissionProgress }) {
+  const pct = Math.min(progress.pct, 1);
+  const done = progress.completed;
+  return (
+    <View style={[clanMissionStyles.card, done && clanMissionStyles.cardDone]}>
+      <View style={clanMissionStyles.header}>
+        <Text style={clanMissionStyles.label} numberOfLines={2}>{def.emoji} {def.label}</Text>
+        <View style={clanMissionStyles.tokenBadge}>
+          <Text style={clanMissionStyles.tokenText}>🎟 {def.tokens}</Text>
+        </View>
+      </View>
+      <View style={clanMissionStyles.barBg}>
+        <View style={[clanMissionStyles.barFill, { width: `${Math.round(pct * 100)}%` as any, backgroundColor: done ? '#4CAF50' : '#FFD700' }]} />
+      </View>
+      <View style={clanMissionStyles.footer}>
+        <Text style={clanMissionStyles.progressText}>{progress.displayValue}</Text>
+        {done && <Text style={clanMissionStyles.doneText}>✅ Completata!</Text>}
+      </View>
+    </View>
+  );
+}
+
+const clanMissionStyles = StyleSheet.create({
+  card: {
+    backgroundColor: '#fff', borderRadius: 14, padding: 14, marginBottom: 10,
+    borderWidth: 1.5, borderColor: '#eee',
+    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
+  },
+  cardDone: { borderColor: '#4CAF50', backgroundColor: '#f0fff4' },
+  header: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 10, gap: 8 },
+  label: { flex: 1, fontSize: 13, fontWeight: '700', color: '#1a1a1a', lineHeight: 18 },
+  tokenBadge: { backgroundColor: '#FFF8E1', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: '#FFD700', flexShrink: 0 },
+  tokenText: { fontSize: 12, fontWeight: '800', color: '#b8860b' },
+  barBg: { height: 8, backgroundColor: '#f0f0f0', borderRadius: 4, overflow: 'hidden', marginBottom: 8 },
+  barFill: { height: 8, borderRadius: 4 },
+  footer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+  progressText: { fontSize: 11, color: '#888', flex: 1 },
+  doneText: { fontSize: 12, fontWeight: '700', color: '#4CAF50' },
+});
 
 export default function ClanScreen() {
   const { user, clan, createClan, joinClan, leaveClan, logout, refreshClan } = useAuth();
@@ -29,6 +70,9 @@ export default function ClanScreen() {
 
   const clanScore = clan ? clan.members.reduce((s, m) => s + m.hearts, 0) : 0;
   const router = useRouter();
+  const [clanMissions, setClanMissions] = useState<{ def: MissionDef; progress: MissionProgress }[]>([]);
+  const [missionsLoading, setMissionsLoading] = useState(false);
+
   const [clanMembersModal, setClanMembersModal] = useState<{ title: string; members: { id: string; username: string; hearts: number; avatar_url?: string | null }[] } | null>(null);
 
   async function showClanMembers(clanId: string, clanName: string) {
@@ -93,6 +137,23 @@ export default function ClanScreen() {
   }, [user, clan]);
 
   useEffect(() => { loadChallenge(); }, [loadChallenge]);
+
+  useEffect(() => {
+    if (clan) loadClanMissions(clan.members.map(m => m.id));
+  }, [clan?.id]);
+
+  async function loadClanMissions(memberIds: string[]) {
+    setMissionsLoading(true);
+    try {
+      const now = new Date();
+      const monthStart = format(new Date(now.getFullYear(), now.getMonth(), 1), 'yyyy-MM-dd');
+      const monthEnd = format(new Date(now.getFullYear(), now.getMonth() + 1, 0), 'yyyy-MM-dd');
+      const defs = getClanMonthMissions(monthStart);
+      const progresses = await Promise.all(defs.map(d => calcClanProgress(d, memberIds, monthStart, monthEnd)));
+      setClanMissions(defs.map((d, i) => ({ def: d, progress: progresses[i] })));
+    } catch {}
+    finally { setMissionsLoading(false); }
+  }
 
   async function handleCreate() {
     if (!clanName.trim()) { Alert.alert('Inserisci un nome per il clan'); return; }
@@ -223,6 +284,16 @@ export default function ClanScreen() {
               {clanScore > 0 ? `+${Math.round(clanScore)}` : Math.round(clanScore)}
             </Text>
           </View>
+
+          {/* Missioni mensili */}
+          <Text style={styles.sectionTitle}>🎯 Missioni del mese</Text>
+          {missionsLoading ? (
+            <ActivityIndicator color="#FFD700" style={{ marginBottom: 12 }} />
+          ) : (
+            clanMissions.map(({ def, progress }, i) => (
+              <ClanMissionCard key={i} def={def} progress={progress} />
+            ))
+          )}
 
           {/* Active challenge */}
           <Text style={styles.sectionTitle}>⚔️ Sfida in corso</Text>

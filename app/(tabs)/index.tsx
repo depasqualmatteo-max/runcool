@@ -56,7 +56,7 @@ export default function DashboardScreen() {
 
   useEffect(() => {
     if (!user) return;
-    checkAndAwardMentality().then(async ({ awarded, newQuarters, fullHeart }) => {
+    checkAndAwardMentality(user.id).then(async ({ awarded, newQuarters, fullHeart }) => {
       if (!awarded) return;
       if (fullHeart) {
         // +1 cuore intero → aggiorna DB
