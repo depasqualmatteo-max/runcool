@@ -268,21 +268,17 @@ export default function ClanScreen() {
         <>
           {/* Clan info */}
           <View style={styles.clanCard}>
-            <View style={styles.clanHeaderRow}>
-              <Text style={styles.clanName}>🏆 {clan.name}</Text>
-              <View style={{ flexDirection: 'row', gap: 8 }}>
-                <TouchableOpacity style={styles.codeChip} onPress={refreshClan}>
-                  <Text style={styles.codeText}>↻</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={styles.codeChip} onPress={copyCode}>
-                  <Text style={styles.codeText}>#{clan.code} 📋</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
+            <Text style={styles.clanEmoji}>🏆</Text>
+            <Text style={styles.clanName}>{clan.name}</Text>
+            <TouchableOpacity style={styles.codeChip} onPress={copyCode}>
+              <Text style={styles.codeText}>#{clan.code}  📋 copia codice</Text>
+            </TouchableOpacity>
+            <View style={styles.clanDivider} />
             <Text style={styles.clanScoreLabel}>Punteggio totale del clan</Text>
             <Text style={[styles.clanScore, { color: clanScore >= 0 ? '#E8445A' : '#ff3b30' }]}>
-              {clanScore > 0 ? `+${Math.round(clanScore)}` : Math.round(clanScore)}
+              {clanScore > 0 ? `+${Math.round(clanScore)}` : Math.round(clanScore)} ❤️
             </Text>
+            <Text style={styles.clanMembersCount}>{clan.members.length} maialini</Text>
           </View>
 
           {/* Missioni mensili */}
@@ -396,12 +392,6 @@ export default function ClanScreen() {
               </View>
             ))}
 
-          <View style={styles.hintCard}>
-            <Text style={styles.hintText}>
-              💡 Condividi il codice <Text style={{ fontWeight: '800' }}>#{clan.code}</Text> con i tuoi amici perché possano entrare nel clan!
-            </Text>
-          </View>
-
           <TouchableOpacity style={styles.leaveButton} onPress={handleLeave}>
             <Text style={styles.leaveButtonText}>Lascia il clan</Text>
           </TouchableOpacity>
@@ -501,19 +491,23 @@ const styles = StyleSheet.create({
   profileScore: { fontSize: 28, fontWeight: '800' },
 
   clanCard: {
-    backgroundColor: '#fff', borderRadius: 16, padding: 20, marginBottom: 20,
+    backgroundColor: '#fff', borderRadius: 20, padding: 24, marginBottom: 20,
     borderWidth: 2, borderColor: '#FFD700',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06, shadowRadius: 6, elevation: 2,
+    shadowColor: '#FFD700', shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15, shadowRadius: 10, elevation: 4,
+    alignItems: 'center',
   },
-  clanHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  clanName: { fontSize: 18, fontWeight: '800', color: '#1a1a1a', flex: 1 },
+  clanEmoji: { fontSize: 40, marginBottom: 6 },
+  clanName: { fontSize: 24, fontWeight: '900', color: '#1a1a1a', textAlign: 'center', marginBottom: 10 },
   codeChip: {
-    backgroundColor: '#f0f0f0', borderRadius: 8, paddingHorizontal: 10, paddingVertical: 6,
+    backgroundColor: '#FFF8E1', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7,
+    borderWidth: 1.5, borderColor: '#FFD700',
   },
-  codeText: { fontSize: 12, fontWeight: '700', color: '#555' },
+  codeText: { fontSize: 12, fontWeight: '800', color: '#b8860b', letterSpacing: 0.5 },
+  clanDivider: { height: 1, backgroundColor: '#f0f0f0', width: '100%', marginVertical: 16 },
   clanScoreLabel: { fontSize: 11, color: '#aaa', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
-  clanScore: { fontSize: 44, fontWeight: '800' },
+  clanScore: { fontSize: 48, fontWeight: '900', marginBottom: 4 },
+  clanMembersCount: { fontSize: 12, color: '#bbb', fontWeight: '600' },
 
   challengeCard: {
     backgroundColor: '#fff', borderRadius: 16, padding: 18, marginBottom: 20,
