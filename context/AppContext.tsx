@@ -142,7 +142,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     setState((s) => ({ hearts: newHearts, logs: [rowToLogEntry(logRow), ...s.logs] }));
 
-    notifyEveryActivitySubscribers(user.id, user.username, '🍺', `${drink.icon ?? ''} ${drink.name} ×${quantity}`.trim());
+    // Nessuna notifica per i drink
   }
 
   async function logWorkout(params: LogWorkoutParams) {
