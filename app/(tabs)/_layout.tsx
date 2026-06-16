@@ -36,10 +36,10 @@ function HomeTabButton(props: BottomTabBarButtonProps) {
 }
 
 const NOTIF_OPTIONS: { value: NotifPref; label: string; desc: string }[] = [
-  { value: 'none', label: 'Nessuna notifica', desc: 'Non ricevi alcuna notifica' },
-  { value: 'important', label: 'Solo notifiche importanti', desc: 'Es. sorpassi in classifica' },
-  { value: 'evening_recap', label: 'Recap serale', desc: 'Ogni sera il riepilogo delle attività di tutti' },
-  { value: 'every_activity', label: 'Notifica per ogni attività', desc: 'Ogni volta che qualcuno logga uno sport' },
+  { value: 'none', label: 'Silenzio totale', desc: 'Nessuna notifica' },
+  { value: 'important', label: 'Solo importanti', desc: 'Sorpassi in classifica e avvisi chiave' },
+  { value: 'evening_recap', label: 'Recap serale', desc: 'Ogni sera + notifiche importanti' },
+  { value: 'every_activity', label: 'Tutto', desc: 'Sport in tempo reale + recap + importanti' },
 ];
 
 function ProfileButton() {

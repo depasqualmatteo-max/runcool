@@ -28,24 +28,35 @@ interface AppContextValue {
 
 const AppContext = createContext<AppContextValue | null>(null);
 
-// Notifica chi ha scelto "Notifica per ogni attività" quando un utente logga sport o drink
-async function notifyEveryActivitySubscribers(actorId: string, actorUsername: string, emoji: string, label: string) {
+// Gerarchia notifiche:
+// every_activity → riceve sport + recap + importanti
+// evening_recap  → riceve recap + importanti
+// important      → riceve solo importanti
+// none           → niente
+
+const SPORT_MESSAGES = [
+  (u: string) => `Ei ei! 🐷 ${u} sta grufolando più di te`,
+  (u: string) => `${u} è già in pista mentre tu sei sul divano 🛋️`,
+  (u: string) => `🏃 ${u} ha appena bruciato calorie. E tu?`,
+  (u: string) => `${u} si sta allenando come un maiale in forma 🐷💨`,
+  (u: string) => `Occhio! ${u} ti sta sorpassando in classifica 👀`,
+  (u: string) => `${u} ha sudato. La domanda è: hai sudato anche tu? 💦`,
+];
+
+async function notifyWorkout(actorId: string, actorUsername: string, workoutLabel: string) {
   try {
     const { data: subs } = await supabase
       .from('profiles')
       .select('id, push_token')
-      .eq('notif_pref', 'every_activity')
+      .in('notif_pref', ['every_activity'])
       .not('push_token', 'is', null)
       .neq('id', actorId);
 
     if (!subs || subs.length === 0) return;
+    const msg = SPORT_MESSAGES[Math.floor(Math.random() * SPORT_MESSAGES.length)];
     for (const s of subs) {
       if (!s.push_token) continue;
-      await sendPushNotification(
-        s.push_token,
-        `RunCool ${emoji}`,
-        `${actorUsername} ha appena loggato: ${label}`,
-      );
+      await sendPushNotification(s.push_token, `RunCool 💪`, msg(actorUsername));
     }
   } catch {}
 }
@@ -201,7 +212,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     setState((s) => ({ hearts: newHearts, logs: [rowToLogEntry(logRow), ...s.logs] }));
 
-    notifyEveryActivitySubscribers(user.id, user.username, '💪', `${workout.icon ?? ''} ${workout.name}`.trim());
+    notifyWorkout(user.id, user.username, `${workout.icon ?? ''} ${workout.name}`.trim());
 
     // Salva country_code in background (non blocca se colonna non esiste)
     if (logRow?.id) {
