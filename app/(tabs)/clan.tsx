@@ -269,12 +269,24 @@ export default function ClanScreen() {
     });
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
-    const ext = (asset.uri.split('.').pop() ?? 'jpg').toLowerCase().replace('jpeg', 'jpg');
+    const ext = (asset.uri.split('.').pop() ?? 'jpg').toLowerCase();
+    const mime = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg' : `image/${ext}`;
     const path = `clan-avatars/${clan!.id}.${ext}`;
-    const response = await fetch(asset.uri);
-    const arrayBuffer = await response.arrayBuffer();
-    const { error: upErr } = await supabase.storage.from('avatars').upload(path, arrayBuffer, { upsert: true, contentType: `image/${ext === 'jpg' ? 'jpeg' : ext}` });
-    if (upErr) { Alert.alert('Errore upload', upErr.message); return; }
+    const formData = new FormData();
+    formData.append('file', { uri: asset.uri, name: `clan.${ext}`, type: mime } as any);
+    const { data: { session } } = await supabase.auth.getSession();
+    const uploadRes = await fetch(
+      `https://qqpxtxcmssxxvajfagie.supabase.co/storage/v1/object/avatars/${path}`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${session?.access_token}`,
+          'x-upsert': 'true',
+        },
+        body: formData,
+      }
+    );
+    if (!uploadRes.ok) { Alert.alert('Errore upload', await uploadRes.text()); return; }
     const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path);
     await supabase.from('clans').update({ avatar_url: publicUrl }).eq('id', clan!.id);
     await refreshClan();
