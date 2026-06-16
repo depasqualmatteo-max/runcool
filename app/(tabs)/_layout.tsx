@@ -1,10 +1,13 @@
 import React, { useState } from 'react';
 import { Tabs, Redirect } from 'expo-router';
-import { Text, Platform, TouchableOpacity, View, StyleSheet, ActivityIndicator, Modal } from 'react-native';
+import { Text, Platform, TouchableOpacity, View, StyleSheet, ActivityIndicator, Modal, Alert } from 'react-native';
 import { UserAvatar } from '@/components/UserAvatar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAuth, NotifPref } from '@/context/AuthContext';
 import { useRouter } from 'expo-router';
+import { debugRegisterForPushNotifications } from '@/lib/notifications';
+import { supabase } from '@/lib/supabase';
+// Rimuovi Alert duplicato se importato due volte
 // Inline type — evita dipendenza da @react-navigation/bottom-tabs
 type BottomTabBarButtonProps = {
   onPress?: (e: any) => void;
@@ -44,6 +47,19 @@ function ProfileButton() {
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  async function testNotifiche() {
+    try {
+      const token = await debugRegisterForPushNotifications();
+      // Salva nel DB
+      if (user) {
+        await supabase.from('profiles').update({ push_token: token }).eq('id', user.id);
+      }
+      Alert.alert('✅ Token ottenuto!', `Token salvato:\n${token}`);
+    } catch (e: any) {
+      Alert.alert('❌ Errore notifiche', e?.message ?? String(e));
+    }
+  }
 
   async function selectPref(pref: NotifPref) {
     if (saving || pref === user?.notifPref) return;
@@ -106,6 +122,12 @@ function ProfileButton() {
               );
             })}
           </View>
+
+            <View style={menuStyles.divider} />
+            <TouchableOpacity style={menuStyles.debugRow} onPress={testNotifiche}>
+              <Text style={menuStyles.debugText}>🔔 Ripristina notifiche</Text>
+            </TouchableOpacity>
+        </View>
         </TouchableOpacity>
       </Modal>
     </>
@@ -155,6 +177,8 @@ const menuStyles = StyleSheet.create({
   radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#FFD700' },
   optionLabel: { fontSize: 14, fontWeight: '700', color: '#1a1a1a' },
   optionDesc: { fontSize: 12, color: '#999', marginTop: 2, lineHeight: 16 },
+  debugRow: { paddingVertical: 10, alignItems: 'center' },
+  debugText: { fontSize: 13, fontWeight: '700', color: '#888' },
 });
 
 export default function TabLayout() {

@@ -17,6 +17,7 @@ Notifications.setNotificationHandler({
 });
 
 // Registra il dispositivo e ottieni il push token
+// Ritorna { token, error } — error è null se tutto ok
 export async function registerForPushNotifications(): Promise<string | null> {
   if (!Device.isDevice) return null;
 
@@ -39,8 +40,45 @@ export async function registerForPushNotifications(): Promise<string | null> {
 
   if (finalStatus !== 'granted') return null;
 
-  const token = (await Notifications.getExpoPushTokenAsync({ projectId: PROJECT_ID })).data;
-  return token;
+  try {
+    const token = (await Notifications.getExpoPushTokenAsync({ projectId: PROJECT_ID })).data;
+    return token;
+  } catch (e: any) {
+    throw new Error(e?.message ?? 'Errore sconosciuto nel recupero del token');
+  }
+}
+
+// Versione diagnostica: ritorna il token o lancia con messaggio dettagliato
+export async function debugRegisterForPushNotifications(): Promise<string> {
+  if (!Device.isDevice) throw new Error('Non è un dispositivo fisico (isDevice=false)');
+
+  if (Platform.OS === 'android') {
+    try {
+      await Notifications.setNotificationChannelAsync('default', {
+        name: 'RunCool',
+        importance: Notifications.AndroidImportance.MAX,
+        vibrationPattern: [0, 250, 250, 250],
+        lightColor: '#FFD700',
+      });
+    } catch (e: any) {
+      throw new Error('Errore creazione canale Android: ' + (e?.message ?? e));
+    }
+  }
+
+  const { status: existing } = await Notifications.getPermissionsAsync();
+  let finalStatus = existing;
+  if (existing !== 'granted') {
+    const { status } = await Notifications.requestPermissionsAsync();
+    finalStatus = status;
+  }
+  if (finalStatus !== 'granted') throw new Error(`Permesso notifiche negato (status: ${finalStatus})`);
+
+  try {
+    const result = await Notifications.getExpoPushTokenAsync({ projectId: PROJECT_ID });
+    return result.data;
+  } catch (e: any) {
+    throw new Error('getExpoPushTokenAsync fallito: ' + (e?.message ?? e));
+  }
 }
 
 // Manda una notifica push via Expo Push API
