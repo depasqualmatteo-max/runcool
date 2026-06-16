@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Alert, Platform, ActivityIndicator, RefreshControl, Modal,
+  TextInput, Alert, Platform, ActivityIndicator, RefreshControl, Modal, Image,
 } from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useApp } from '@/context/AppContext';
@@ -258,6 +259,27 @@ export default function ClanScreen() {
     setRefreshing(false);
   }
 
+  async function pickClanImage() {
+    if (!isOwner) return;
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') { Alert.alert('Permesso negato', 'Serve accesso alla galleria'); return; }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true, aspect: [1, 1], quality: 0.7,
+    });
+    if (result.canceled || !result.assets[0]) return;
+    const asset = result.assets[0];
+    const ext = asset.uri.split('.').pop() ?? 'jpg';
+    const path = `clan-avatars/${clan!.id}.${ext}`;
+    const response = await fetch(asset.uri);
+    const blob = await response.blob();
+    const { error: upErr } = await supabase.storage.from('avatars').upload(path, blob, { upsert: true, contentType: `image/${ext}` });
+    if (upErr) { Alert.alert('Errore upload', upErr.message); return; }
+    const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path);
+    await supabase.from('clans').update({ avatar_url: publicUrl }).eq('id', clan!.id);
+    await refreshClan();
+  }
+
   return (
     <ScrollView
       style={styles.container}
@@ -268,17 +290,32 @@ export default function ClanScreen() {
         <>
           {/* Clan info */}
           <View style={styles.clanCard}>
-            <Text style={styles.clanEmoji}>🏆</Text>
-            <Text style={styles.clanName}>{clan.name}</Text>
-            <TouchableOpacity style={styles.codeChip} onPress={copyCode}>
-              <Text style={styles.codeText}>#{clan.code}  📋 copia codice</Text>
+            {/* Immagine clan */}
+            <TouchableOpacity onPress={pickClanImage} style={styles.clanAvatarWrapper} activeOpacity={isOwner ? 0.7 : 1}>
+              {clan.avatarUrl ? (
+                <Image source={{ uri: clan.avatarUrl }} style={styles.clanAvatar} />
+              ) : (
+                <View style={styles.clanAvatarPlaceholder}>
+                  <Text style={styles.clanAvatarPlaceholderText}>{isOwner ? '📷' : '🐷'}</Text>
+                </View>
+              )}
+              {isOwner && (
+                <View style={styles.clanAvatarEdit}>
+                  <Text style={{ fontSize: 10, color: '#fff' }}>✎</Text>
+                </View>
+              )}
             </TouchableOpacity>
+            <Text style={styles.clanName}>{clan.name}</Text>
             <View style={styles.clanDivider} />
             <Text style={styles.clanScoreLabel}>Punteggio totale del clan</Text>
             <Text style={[styles.clanScore, { color: clanScore >= 0 ? '#E8445A' : '#ff3b30' }]}>
               {clanScore > 0 ? `+${Math.round(clanScore)}` : Math.round(clanScore)} ❤️
             </Text>
             <Text style={styles.clanMembersCount}>{clan.members.length} maialini</Text>
+            {/* Codice in basso a destra */}
+            <TouchableOpacity style={styles.codeChip} onPress={copyCode}>
+              <Text style={styles.codeText}>#{clan.code} 📋</Text>
+            </TouchableOpacity>
           </View>
 
           {/* Missioni mensili */}
@@ -497,14 +534,26 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15, shadowRadius: 10, elevation: 4,
     alignItems: 'center',
   },
-  clanEmoji: { fontSize: 40, marginBottom: 6 },
-  clanName: { fontSize: 24, fontWeight: '900', color: '#1a1a1a', textAlign: 'center', marginBottom: 10 },
-  codeChip: {
-    backgroundColor: '#FFF8E1', borderRadius: 20, paddingHorizontal: 14, paddingVertical: 7,
-    borderWidth: 1.5, borderColor: '#FFD700',
+  clanAvatarWrapper: { marginBottom: 12, position: 'relative' },
+  clanAvatar: { width: 80, height: 80, borderRadius: 40, borderWidth: 2, borderColor: '#FFD700' },
+  clanAvatarPlaceholder: {
+    width: 80, height: 80, borderRadius: 40,
+    backgroundColor: '#FFF8E1', borderWidth: 2, borderColor: '#FFD700',
+    alignItems: 'center', justifyContent: 'center',
   },
-  codeText: { fontSize: 12, fontWeight: '800', color: '#b8860b', letterSpacing: 0.5 },
-  clanDivider: { height: 1, backgroundColor: '#f0f0f0', width: '100%', marginVertical: 16 },
+  clanAvatarPlaceholderText: { fontSize: 32 },
+  clanAvatarEdit: {
+    position: 'absolute', bottom: 0, right: 0,
+    backgroundColor: '#FFD700', borderRadius: 10, width: 20, height: 20,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  clanName: { fontSize: 24, fontWeight: '900', color: '#1a1a1a', textAlign: 'center', marginBottom: 0 },
+  codeChip: {
+    position: 'absolute', bottom: 14, right: 14,
+    backgroundColor: '#f5f5f5', borderRadius: 10, paddingHorizontal: 10, paddingVertical: 5,
+  },
+  codeText: { fontSize: 11, fontWeight: '700', color: '#aaa' },
+  clanDivider: { height: 1, backgroundColor: '#f0f0f0', width: '100%', marginVertical: 14 },
   clanScoreLabel: { fontSize: 11, color: '#aaa', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 },
   clanScore: { fontSize: 48, fontWeight: '900', marginBottom: 4 },
   clanMembersCount: { fontSize: 12, color: '#bbb', fontWeight: '600' },

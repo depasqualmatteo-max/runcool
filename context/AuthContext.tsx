@@ -29,6 +29,7 @@ export interface Clan {
   name: string;
   code: string;
   ownerId: string;
+  avatarUrl: string | null;
   members: ClanMember[];
 }
 
@@ -232,6 +233,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       name: clanData.name,
       code: clanData.code,
       ownerId: clanData.owner_id,
+      avatarUrl: clanData.avatar_url ?? null,
       members: (members ?? []).map((m) => ({
         id: m.id,
         username: m.username,
