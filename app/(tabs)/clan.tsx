@@ -269,11 +269,11 @@ export default function ClanScreen() {
     });
     if (result.canceled || !result.assets[0]) return;
     const asset = result.assets[0];
-    const ext = asset.uri.split('.').pop() ?? 'jpg';
+    const ext = (asset.uri.split('.').pop() ?? 'jpg').toLowerCase().replace('jpeg', 'jpg');
     const path = `clan-avatars/${clan!.id}.${ext}`;
     const response = await fetch(asset.uri);
-    const blob = await response.blob();
-    const { error: upErr } = await supabase.storage.from('avatars').upload(path, blob, { upsert: true, contentType: `image/${ext}` });
+    const arrayBuffer = await response.arrayBuffer();
+    const { error: upErr } = await supabase.storage.from('avatars').upload(path, arrayBuffer, { upsert: true, contentType: `image/${ext === 'jpg' ? 'jpeg' : ext}` });
     if (upErr) { Alert.alert('Errore upload', upErr.message); return; }
     const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path);
     await supabase.from('clans').update({ avatar_url: publicUrl }).eq('id', clan!.id);
