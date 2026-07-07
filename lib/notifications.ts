@@ -98,6 +98,45 @@ export async function sendPushNotification(
   }
 }
 
+// ── Storico notifiche ricevute ──────────────────────────────────────────────
+const NOTIF_HISTORY_KEY = 'notif_history';
+const MAX_HISTORY = 50;
+
+export interface StoredNotif {
+  id: string;
+  title: string;
+  body: string;
+  receivedAt: string; // ISO string
+}
+
+export async function saveReceivedNotification(title: string, body: string): Promise<void> {
+  try {
+    const raw = await AsyncStorage.getItem(NOTIF_HISTORY_KEY);
+    const existing: StoredNotif[] = raw ? JSON.parse(raw) : [];
+    const entry: StoredNotif = {
+      id: Date.now().toString(),
+      title,
+      body,
+      receivedAt: new Date().toISOString(),
+    };
+    const updated = [entry, ...existing].slice(0, MAX_HISTORY);
+    await AsyncStorage.setItem(NOTIF_HISTORY_KEY, JSON.stringify(updated));
+  } catch (_) {}
+}
+
+export async function getReceivedNotifications(): Promise<StoredNotif[]> {
+  try {
+    const raw = await AsyncStorage.getItem(NOTIF_HISTORY_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (_) {
+    return [];
+  }
+}
+
+export async function clearNotificationHistory(): Promise<void> {
+  await AsyncStorage.removeItem(NOTIF_HISTORY_KEY);
+}
+
 // Controlla se oggi è lunedì e non abbiamo ancora mandato il recap settimanale
 const RECAP_STORAGE_KEY = 'weekly_recap_sent';
 

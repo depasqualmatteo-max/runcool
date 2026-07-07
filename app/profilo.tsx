@@ -1,19 +1,216 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, TextInput,
   Image, ActivityIndicator, Alert, Platform, ScrollView,
-  Modal, Dimensions,
+  Modal, Dimensions, RefreshControl,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { useApp } from '@/context/AppContext';
-import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useRouter, useLocalSearchParams, useFocusEffect } from 'expo-router';
 import { getMentalityState } from '@/lib/mentality';
 import { WORKOUT_MAP } from '@/constants/workouts';
 import { DRINK_MAP } from '@/constants/drinks';
+import { PigSkin } from '@/components/PigSkin';
+import { PigBgView } from '@/components/PigBgView';
+import { SHOP_BGS } from '@/constants/shop';
+import { useTheme } from '@/context/ThemeContext';
+import type { ThemeColors } from '@/constants/Colors';
 
 const SCREEN_W = Dimensions.get('window').width;
+
+// ─── Grafico attività ────────────────────────────────────────────────────
+
+type ChartPeriod = 'week' | 'month';
+const IT_DAYS = ['D', 'L', 'M', 'M', 'G', 'V', 'S'];
+const CHART_W = SCREEN_W - 48 - 32;
+const CHART_H = 100;
+const ZERO_Y = CHART_H / 2;
+
+function StatsChart({ logs, currentHearts }: { logs: any[], currentHearts: number }) {
+  const [period, setPeriod] = useState<ChartPeriod>('week');
+  const { colors, isDark } = useTheme();
+  const chartStyles = useMemo(() => makeChartStyles(colors, isDark), [colors, isDark]);
+
+  const days = useMemo(() => {
+    const n = period === 'week' ? 7 : 30;
+    const now = new Date();
+    return Array.from({ length: n }, (_, i) => {
+      const d = new Date(now.getTime() - (n - 1 - i) * 86400000);
+      const dateStr = d.toISOString().slice(0, 10);
+      const dayEnd = dateStr + 'T23:59:59.999Z';
+      // Punteggio a fine giornata = cuori attuali meno tutto quello che è successo dopo
+      const deltaAfter = logs
+        .filter(l => l.timestamp > dayEnd)
+        .reduce((s: number, l: any) => s + (l.type === 'workout' ? (l.heartsGained ?? 0) : -(l.heartsLost ?? 0)), 0);
+      const score = currentHearts - deltaAfter;
+      const dayLogs = logs.filter(l => l.timestamp?.slice(0, 10) === dateStr);
+      const gained = dayLogs.filter((l: any) => l.type === 'workout').reduce((s: number, l: any) => s + (l.heartsGained ?? 0), 0);
+      const lost = dayLogs.filter((l: any) => l.type === 'drink').reduce((s: number, l: any) => s + (l.heartsLost ?? 0), 0);
+      return { dateStr, label: IT_DAYS[d.getDay()], date: d.getDate(), score, gained, lost, isToday: i === n - 1 };
+    });
+  }, [logs, period, currentHearts]);
+
+  const scores = days.map(d => d.score);
+  const minScore = Math.min(...scores);
+  const maxScore = Math.max(...scores);
+  const pad = 8;
+  const range = Math.max(maxScore - minScore, 1);
+  const toY = (v: number) => CHART_H - pad - ((v - minScore) / range) * (CHART_H - 2 * pad);
+  // Linea dello zero cuori (se visibile nel range)
+  const zeroY = minScore <= 0 && maxScore >= 0 ? toY(0) : null;
+
+  const n = days.length;
+  const xOf = (i: number) => n <= 1 ? CHART_W / 2 : (i / (n - 1)) * CHART_W;
+
+  const netPoints = days.map((d, i) => ({ x: xOf(i), y: toY(d.score) }));
+
+  const totalGained = days.reduce((s, d) => s + d.gained, 0);
+  const totalLost = days.reduce((s, d) => s + d.lost, 0);
+  const net = totalGained - totalLost;
+
+  // Label sull'asse X: settimana ogni giorno, mese ogni 5 giorni
+  const xLabels = days.filter((_, i) =>
+    period === 'week' ? true : (i % 5 === 0 || i === days.length - 1)
+  );
+
+  return (
+    <View style={chartStyles.card}>
+      <View style={chartStyles.selector}>
+        {(['week', 'month'] as ChartPeriod[]).map(p => (
+          <TouchableOpacity
+            key={p}
+            style={[chartStyles.selectorBtn, period === p && chartStyles.selectorBtnActive]}
+            onPress={() => setPeriod(p)}
+          >
+            <Text style={[chartStyles.selectorText, period === p && chartStyles.selectorTextActive]}>
+              {p === 'week' ? 'Settimana' : 'Mese'}
+            </Text>
+          </TouchableOpacity>
+        ))}
+      </View>
+
+      <View style={{ width: CHART_W, height: CHART_H + 20, overflow: 'hidden' }}>
+        {/* Baseline zero cuori (solo se 0 è nel range visibile) */}
+        {zeroY !== null && (
+          <View style={{ position: 'absolute', left: 0, right: 0, top: zeroY, height: 1, backgroundColor: colors.border }} />
+        )}
+
+        {/* Tick giornalieri: verde se guadagnato, rosso se perso */}
+        {days.map((d, i) => {
+          const barW = Math.max(2, CHART_W / days.length - 2);
+          const cx = xOf(i);
+          const maxDay = Math.max(...days.map(x => Math.max(x.gained, x.lost)), 1);
+          const tickMaxH = 14;
+          const gainedH = d.gained > 0 ? Math.max(3, Math.round((d.gained / maxDay) * tickMaxH)) : 0;
+          const lostH = d.lost > 0 ? Math.max(3, Math.round((d.lost / maxDay) * tickMaxH)) : 0;
+          return (
+            <React.Fragment key={`fill${i}`}>
+              {gainedH > 0 && (
+                <View style={{
+                  position: 'absolute',
+                  left: cx - barW / 2,
+                  top: CHART_H - gainedH,
+                  width: barW,
+                  height: gainedH,
+                  backgroundColor: '#4CAF50',
+                  opacity: 0.5,
+                  borderRadius: 2,
+                }} />
+              )}
+              {lostH > 0 && (
+                <View style={{
+                  position: 'absolute',
+                  left: cx - barW / 2,
+                  top: CHART_H - gainedH - lostH - (gainedH > 0 ? 2 : 0),
+                  width: barW,
+                  height: lostH,
+                  backgroundColor: '#E8445A',
+                  opacity: 0.5,
+                  borderRadius: 2,
+                }} />
+              )}
+            </React.Fragment>
+          );
+        })}
+
+        {/* Segmenti linea */}
+        {netPoints.slice(0, -1).map((p, i) => {
+          const q = netPoints[i + 1];
+          const dx = q.x - p.x;
+          const dy = q.y - p.y;
+          const length = Math.sqrt(dx * dx + dy * dy);
+          const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+          return (
+            <View key={`seg${i}`} style={{
+              position: 'absolute',
+              width: length,
+              height: 2.5,
+              backgroundColor: '#2196F3',
+              borderRadius: 1.5,
+              left: (p.x + q.x) / 2 - length / 2,
+              top: (p.y + q.y) / 2 - 1.25,
+              transform: [{ rotate: `${angle}deg` }],
+            }} />
+          );
+        })}
+
+        {/* Punto oggi */}
+        {netPoints.length > 0 && (() => {
+          const last = netPoints[netPoints.length - 1];
+          return (
+            <View style={{
+              position: 'absolute',
+              width: 9, height: 9, borderRadius: 5,
+              backgroundColor: '#2196F3',
+              left: last.x - 4.5,
+              top: last.y - 4.5,
+            }} />
+          );
+        })()}
+
+        {/* Label asse X */}
+        {xLabels.map((d, i) => {
+          const idx = days.indexOf(d);
+          return (
+            <Text key={i} style={{
+              position: 'absolute',
+              left: Math.max(0, Math.min(xOf(idx) - 8, CHART_W - 16)),
+              top: CHART_H + 2,
+              width: 16,
+              textAlign: 'center',
+              fontSize: 10,
+              color: d.isToday ? '#2196F3' : colors.textFaint,
+              fontWeight: d.isToday ? '800' : '600',
+            }}>
+              {period === 'week' ? d.label : d.date}
+            </Text>
+          );
+        })}
+      </View>
+
+      <View style={chartStyles.summary}>
+        <View style={chartStyles.summaryItem}>
+          <Text style={[chartStyles.summaryVal, { color: '#4CAF50' }]}>+{totalGained}</Text>
+          <Text style={chartStyles.summaryLbl}>attività ❤️</Text>
+        </View>
+        <View style={chartStyles.summaryDivider} />
+        <View style={chartStyles.summaryItem}>
+          <Text style={[chartStyles.summaryVal, { color: '#E8445A' }]}>-{totalLost}</Text>
+          <Text style={chartStyles.summaryLbl}>drink 💔</Text>
+        </View>
+        <View style={chartStyles.summaryDivider} />
+        <View style={chartStyles.summaryItem}>
+          <Text style={[chartStyles.summaryVal, { color: net >= 0 ? '#4CAF50' : '#E8445A' }]}>
+            {net >= 0 ? '+' : ''}{net}
+          </Text>
+          <Text style={chartStyles.summaryLbl}>netto 📈</Text>
+        </View>
+      </View>
+    </View>
+  );
+}
 
 // ─── Medaglie ────────────────────────────────────────────────────────────
 
@@ -23,6 +220,9 @@ interface Medal {
   name: string;
   desc: string;
   earned: boolean;
+  current: number;
+  target: number;
+  unit?: string;
 }
 
 // Conteggi ori/argenti/bronzi per categoria (singoli/tandem/clan)
@@ -55,51 +255,57 @@ function computeMedals(logs: any[], hearts: number, rankCounts?: RankCounts): Me
   const totalSilver = rc.ss + rc.st + rc.sc;
   const totalBronze = rc.bs + rc.bt + rc.bc;
 
+  const m = (id: string, icon: string, name: string, desc: string, current: number, target: number, unit?: string): Medal => ({
+    id, icon, name, desc, earned: current >= target,
+    current: Math.min(current, target), target, unit,
+  });
+
   return [
     // ─── Attività ───
-    { id: 'first_drink',    icon: '🍺', name: 'Prima Birra',    desc: 'Logga il tuo primo drink',             earned: drinks.length >= 1 },
-    { id: 'first_workout',  icon: '👟', name: 'Primo Passo',    desc: 'Logga il tuo primo allenamento',       earned: workouts.length >= 1 },
-    { id: 'maialino_doc',   icon: '🐷', name: 'Maialino DOC',   desc: '20 drink loggati in totale',           earned: drinks.length >= 20 },
-    { id: 'atleta',         icon: '💪', name: 'Atleta',          desc: '20 sport loggati in totale',           earned: workouts.length >= 20 },
-    { id: 'social_drinker', icon: '🥂', name: 'Social Drinker',  desc: '50 drink loggati',                    earned: drinks.length >= 50 },
-    { id: 'iron_man',       icon: '🦾', name: 'Iron Man',        desc: '50 allenamenti loggati',              earned: workouts.length >= 50 },
-    { id: 'centurione',     icon: '🏛️', name: 'Centurione',     desc: '100 attività totali',                  earned: (drinks.length + workouts.length) >= 100 },
-    { id: 'costante',       icon: '📅', name: 'Costante',        desc: '7 giorni consecutivi di sport',        earned: maxStreak >= 7 },
-    { id: 'maratoneta',     icon: '🏅', name: 'Maratoneta',      desc: '42 km totali corsi',                  earned: totalKm >= 42 },
-    { id: 'scalatore',      icon: '🏔️', name: 'Scalatore',      desc: '500m di dislivello totali',            earned: totalElev >= 500 },
-    { id: 'virtuoso',       icon: '🌟', name: 'Virtuoso',        desc: 'Punteggio superiore a +15',           earned: hearts >= 15 },
-    { id: 'leggenda',       icon: '👑', name: 'Leggenda',        desc: 'Punteggio superiore a +50',           earned: hearts >= 50 },
-    { id: 'debiti',         icon: '💸', name: 'Troppo Bere',     desc: 'Punteggio sceso sotto -10',           earned: hearts <= -10 },
+    m('first_drink',    '🍺', 'Prima Birra',          'Logga il tuo primo drink',           drinks.length, 1, 'drink'),
+    m('first_workout',  '👟', 'Primo Passo',           'Logga il tuo primo allenamento',      workouts.length, 1, 'allenamento'),
+    m('maialino_doc',   '🐷', 'Maialino DOC',          '20 drink loggati in totale',          drinks.length, 20, 'drink'),
+    m('atleta',         '💪', 'Atleta',                '20 attività loggate in totale',       workouts.length, 20, 'attività'),
+    m('social_drinker', '🥂', 'Social Drinker',        '50 drink loggati',                    drinks.length, 50, 'drink'),
+    m('iron_man',       '🦾', 'Iron Man',              '50 allenamenti loggati',              workouts.length, 50, 'attività'),
+    m('alcolizzato',    '🍻', 'Alcolizzato',           '100 drink loggati — sblocca Ubriaco', drinks.length, 100, 'drink'),
+    m('centurione',     '🏛️', 'Centurione',           '100 attività totali — sblocca Palestrato', drinks.length + workouts.length, 100, 'attività'),
+    m('costante',       '📅', 'Costante',              '7 giorni consecutivi di attività',     maxStreak, 7, 'giorni'),
+    m('maratoneta',     '🏅', 'Maratoneta',            '42 km totali corsi',                  Math.round(totalKm * 10) / 10, 42, 'km'),
+    m('scalatore',      '🏔️', 'Scalatore',            '500m di dislivello totali',            Math.round(totalElev), 500, 'm'),
+    m('virtuoso',       '🌟', 'Virtuoso',              'Punteggio superiore a +15',           Math.max(0, hearts), 15, '❤️'),
+    m('leggenda',       '👑', 'Leggenda',              'Punteggio superiore a +50',           Math.max(0, hearts), 50, '❤️'),
+    m('debiti',         '💸', 'Troppo Bere',           'Punteggio sceso sotto -10',           Math.max(0, -hearts), 10, '💔'),
 
     // ─── Oro 🥇 ───
-    { id: 'g_sing_1',  icon: '🥇', name: 'Campione',           desc: '1° nei singoli a fine mese',            earned: rc.gs >= 1 },
-    { id: 'g_tand_1',  icon: '🥇', name: 'Coppia d\'Oro',      desc: '1° nel tandem a fine mese',             earned: rc.gt >= 1 },
-    { id: 'g_clan_1',  icon: '🥇', name: 'Branco Alpha',       desc: '1° nel clan a fine mese',               earned: rc.gc >= 1 },
-    { id: 'g_sing_6',  icon: '🏆', name: 'Semestre d\'Oro',      desc: '6 volte 1° singoli',                   earned: rc.gs >= 6 },
-    { id: 'g_tand_6',  icon: '🏆', name: 'Tandem Invincibile',  desc: '6 volte 1° tandem',                   earned: rc.gt >= 6 },
-    { id: 'g_clan_6',  icon: '🏆', name: 'Clan Imbattibile',    desc: '6 volte 1° clan',                     earned: rc.gc >= 6 },
-    { id: 'g_12',      icon: '✨', name: 'Anno d\'Oro',         desc: '12 ori totali (qualsiasi categoria)',   earned: totalGold >= 12 },
-    { id: 'g_24',      icon: '💎', name: 'Biennio d\'Oro',      desc: '24 ori totali (qualsiasi categoria)',   earned: totalGold >= 24 },
+    m('g_sing_1',  '🥇', 'Campione',            '1° nei singoli a fine mese',          rc.gs, 1, 'volta'),
+    m('g_tand_1',  '🥇', 'Coppia d\'Oro',       '1° nel tandem a fine mese',           rc.gt, 1, 'volta'),
+    m('g_clan_1',  '🥇', 'Branco Alpha',        '1° nel clan a fine mese',             rc.gc, 1, 'volta'),
+    m('g_sing_6',  '🏆', 'Semestre d\'Oro',     '6 volte 1° singoli',                  rc.gs, 6, 'volte'),
+    m('g_tand_6',  '🏆', 'Tandem Invincibile',  '6 volte 1° tandem',                  rc.gt, 6, 'volte'),
+    m('g_clan_6',  '🏆', 'Clan Imbattibile',    '6 volte 1° clan',                    rc.gc, 6, 'volte'),
+    m('g_12',      '✨', 'Anno d\'Oro',          '12 ori totali (qualsiasi categoria)', totalGold, 12, 'ori'),
+    m('g_24',      '💎', 'Biennio d\'Oro',       '24 ori totali (qualsiasi categoria)', totalGold, 24, 'ori'),
 
     // ─── Argento 🥈 ───
-    { id: 's_sing_1',  icon: '🥈', name: 'Vice Campione',       desc: '2° nei singoli a fine mese',           earned: rc.ss >= 1 },
-    { id: 's_tand_1',  icon: '🥈', name: 'Coppia d\'Argento',   desc: '2° nel tandem a fine mese',            earned: rc.st >= 1 },
-    { id: 's_clan_1',  icon: '🥈', name: 'Branco Beta',         desc: '2° nel clan a fine mese',              earned: rc.sc >= 1 },
-    { id: 's_sing_6',  icon: '🪙', name: 'Semestre d\'Argento',  desc: '6 volte 2° singoli',                  earned: rc.ss >= 6 },
-    { id: 's_tand_6',  icon: '🪙', name: 'Tandem d\'Argento',   desc: '6 volte 2° tandem',                   earned: rc.st >= 6 },
-    { id: 's_clan_6',  icon: '🪙', name: 'Clan d\'Argento',     desc: '6 volte 2° clan',                     earned: rc.sc >= 6 },
-    { id: 's_12',      icon: '🌙', name: 'Anno d\'Argento',     desc: '12 argenti totali',                    earned: totalSilver >= 12 },
-    { id: 's_24',      icon: '⚪', name: 'Biennio d\'Argento',  desc: '24 argenti totali',                    earned: totalSilver >= 24 },
+    m('s_sing_1',  '🥈', 'Vice Campione',        '2° nei singoli a fine mese',          rc.ss, 1, 'volta'),
+    m('s_tand_1',  '🥈', 'Coppia d\'Argento',    '2° nel tandem a fine mese',           rc.st, 1, 'volta'),
+    m('s_clan_1',  '🥈', 'Branco Beta',          '2° nel clan a fine mese',             rc.sc, 1, 'volta'),
+    m('s_sing_6',  '🪙', 'Semestre d\'Argento',  '6 volte 2° singoli',                  rc.ss, 6, 'volte'),
+    m('s_tand_6',  '🪙', 'Tandem d\'Argento',    '6 volte 2° tandem',                  rc.st, 6, 'volte'),
+    m('s_clan_6',  '🪙', 'Clan d\'Argento',      '6 volte 2° clan',                    rc.sc, 6, 'volte'),
+    m('s_12',      '🌙', 'Anno d\'Argento',      '12 argenti totali',                   totalSilver, 12, 'argenti'),
+    m('s_24',      '⚪', 'Biennio d\'Argento',   '24 argenti totali',                   totalSilver, 24, 'argenti'),
 
     // ─── Bronzo 🥉 ───
-    { id: 'b_sing_1',  icon: '🥉', name: 'Sul Podio',           desc: '3° nei singoli a fine mese',           earned: rc.bs >= 1 },
-    { id: 'b_tand_1',  icon: '🥉', name: 'Coppia di Bronzo',    desc: '3° nel tandem a fine mese',            earned: rc.bt >= 1 },
-    { id: 'b_clan_1',  icon: '🥉', name: 'Branco Gamma',        desc: '3° nel clan a fine mese',              earned: rc.bc >= 1 },
-    { id: 'b_sing_6',  icon: '🔶', name: 'Semestre di Bronzo',   desc: '6 volte 3° singoli',                  earned: rc.bs >= 6 },
-    { id: 'b_tand_6',  icon: '🔶', name: 'Veterano Tandem',     desc: '6 volte 3° tandem',                   earned: rc.bt >= 6 },
-    { id: 'b_clan_6',  icon: '🔶', name: 'Veterano Clan',       desc: '6 volte 3° clan',                     earned: rc.bc >= 6 },
-    { id: 'b_12',      icon: '🟤', name: 'Anno di Bronzo',      desc: '12 bronzi totali',                     earned: totalBronze >= 12 },
-    { id: 'b_24',      icon: '🗿', name: 'Biennio di Bronzo',   desc: '24 bronzi totali',                     earned: totalBronze >= 24 },
+    m('b_sing_1',  '🥉', 'Sul Podio',            '3° nei singoli a fine mese',          rc.bs, 1, 'volta'),
+    m('b_tand_1',  '🥉', 'Coppia di Bronzo',     '3° nel tandem a fine mese',           rc.bt, 1, 'volta'),
+    m('b_clan_1',  '🥉', 'Branco Gamma',         '3° nel clan a fine mese',             rc.bc, 1, 'volta'),
+    m('b_sing_6',  '🔶', 'Semestre di Bronzo',   '6 volte 3° singoli',                  rc.bs, 6, 'volte'),
+    m('b_tand_6',  '🔶', 'Veterano Tandem',      '6 volte 3° tandem',                  rc.bt, 6, 'volte'),
+    m('b_clan_6',  '🔶', 'Veterano Clan',        '6 volte 3° clan',                    rc.bc, 6, 'volte'),
+    m('b_12',      '🟤', 'Anno di Bronzo',       '12 bronzi totali',                    totalBronze, 12, 'bronzi'),
+    m('b_24',      '🗿', 'Biennio di Bronzo',    '24 bronzi totali',                    totalBronze, 24, 'bronzi'),
   ];
 }
 
@@ -205,6 +411,9 @@ function computeStats(logs: any[]): ActivityStat[] {
 export default function ProfiloScreen() {
   const { user, logout, updateAvatar, updateUsername, refreshClan } = useAuth();
   const { state } = useApp();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+  const actionStyles = useMemo(() => makeActionStyles(colors, isDark), [colors, isDark]);
   const router = useRouter();
   const params = useLocalSearchParams<{ userId?: string }>();
 
@@ -221,17 +430,47 @@ export default function ProfiloScreen() {
   const [selectedMedal, setSelectedMedal] = useState<Medal | null>(null);
   const [rankCounts, setRankCounts] = useState<RankCounts>({ gs: 0, gt: 0, gc: 0, ss: 0, st: 0, sc: 0, bs: 0, bt: 0, bc: 0 });
   const [mentalityQuarters, setMentalityQuarters] = useState(0);
+  const [missionStats, setMissionStats] = useState({ currentMission: 1, dailyDone: 0, tandemDone: 0, clanDone: 0 });
+  const [injuryInfo, setInjuryInfo] = useState<{ mode: boolean; since: string | null }>({ mode: false, since: null });
+  const [statsRefreshing, setStatsRefreshing] = useState(false);
+  const [pigSkinId, setPigSkinId] = useState(0);
+  const [pigSkinVariant, setPigSkinVariant] = useState<string>('base');
+  const [pigBgId, setPigBgId] = useState(0);
 
-  useEffect(() => {
-    const uid = isOwner ? user?.id : params.userId;
+  const fetchStats = useCallback(async () => {
+    let uid: string | undefined;
+    if (params.userId && params.userId !== user?.id) {
+      uid = params.userId as string;
+    } else {
+      // Legge l'ID dalla sessione Supabase per evitare problemi di closure stale
+      uid = user?.id ?? (await supabase.auth.getSession()).data.session?.user.id;
+    }
     if (!uid) return;
-    supabase.from('profiles').select('rank_medals').eq('id', uid).single().then(({ data }) => {
-      if (data?.rank_medals) {
-        try { setRankCounts({ gs: 0, gt: 0, gc: 0, ss: 0, st: 0, sc: 0, bs: 0, bt: 0, bc: 0, ...data.rank_medals }); }
-        catch (_) {}
-      }
+    const { data } = await supabase.from('profiles')
+      .select('current_mission, daily_missions_done, tandem_missions_done, clan_missions_done, injury_mode, injury_since, pig_skin, pig_skin_variant, pig_bg, rank_counts')
+      .eq('id', uid).single();
+    if (!data) return;
+    setMissionStats({
+      currentMission: data.current_mission ?? 1,
+      dailyDone: data.daily_missions_done ?? 0,
+      tandemDone: data.tandem_missions_done ?? 0,
+      clanDone: data.clan_missions_done ?? 0,
     });
-  }, [isOwner, params.userId]);
+    setInjuryInfo({ mode: data.injury_mode ?? false, since: data.injury_since ?? null });
+    setPigSkinId(data.pig_skin ?? 0);
+    setPigSkinVariant(data.pig_skin_variant ?? 'base');
+    setPigBgId(data.pig_bg ?? 0);
+    const rc = data.rank_counts ?? {};
+    setRankCounts({
+      gs: rc.gs ?? 0, gt: rc.gt ?? 0, gc: rc.gc ?? 0,
+      ss: rc.ss ?? 0, st: rc.st ?? 0, sc: rc.sc ?? 0,
+      bs: rc.bs ?? 0, bt: rc.bt ?? 0, bc: rc.bc ?? 0,
+    });
+  }, [user?.id, params.userId]);
+
+  useFocusEffect(useCallback(() => { fetchStats(); }, [fetchStats]));
+
+  useEffect(() => { fetchStats(); }, [fetchStats]);
 
   useEffect(() => {
     if (!isOwner) return;
@@ -276,11 +515,11 @@ export default function ProfiloScreen() {
   const visibleMedals = medals.filter(m =>
     m.earned || !RANK_MEDAL_PREFIX.some(p => m.id.startsWith(p))
   );
+  const visibleTotal = visibleMedals.length;
   const stats = computeStats(displayLogs);
 
-  const pigBg = PIG_BACKGROUNDS[0];
-  const pigFrame = PIG_FRAMES[0];
-  const pigSkin = PIG_SKINS[0];
+  const pigBg = SHOP_BGS.find(b => b.id === pigBgId)?.color ?? '#FFEAA7';
+  const pigFrame = '#FFD700';
 
   async function pickAndUpload() {
     try {
@@ -341,8 +580,19 @@ export default function ProfiloScreen() {
     setEditingName(false);
   }
 
+  async function handleRefresh() {
+    setStatsRefreshing(true);
+    await fetchStats();
+    if (isOwner) getMentalityState().then(({ quarters }) => setMentalityQuarters(quarters));
+    setStatsRefreshing(false);
+  }
+
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.container}
+      contentContainerStyle={styles.content}
+      refreshControl={<RefreshControl refreshing={statsRefreshing} onRefresh={handleRefresh} tintColor="#FFD700" />}
+    >
       {/* ─── Header profilo ─── */}
       <View style={styles.header}>
         <TouchableOpacity
@@ -391,7 +641,7 @@ export default function ProfiloScreen() {
             activeOpacity={isOwner ? 0.7 : 1}
           >
             <Text style={styles.username}>
-              {displayName}{isOwner ? ' ✏️' : ''}
+              {displayName}{injuryInfo.mode ? ' 🩹' : ''}{isOwner ? ' ✏️' : ''}
             </Text>
           </TouchableOpacity>
         )}
@@ -431,32 +681,37 @@ export default function ProfiloScreen() {
       {/* ─── Card Maialino Avatar ─── */}
       <Text style={styles.sectionTitle}>Il tuo maialino</Text>
       <View style={[styles.pigCard, { borderColor: pigFrame }]}>
-        <View style={[styles.pigBg, { backgroundColor: pigBg }]}>
-          <Text style={styles.pigSkin}>{pigSkin}</Text>
-        </View>
-        <View style={styles.pigLayers}>
-          <View style={styles.pigLayerItem}>
-            <View style={[styles.pigLayerDot, { backgroundColor: pigBg }]} />
-            <Text style={styles.pigLayerLabel}>Sfondo</Text>
-          </View>
-          <View style={styles.pigLayerItem}>
-            <View style={[styles.pigLayerDot, { backgroundColor: pigFrame }]} />
-            <Text style={styles.pigLayerLabel}>Cornice</Text>
-          </View>
-          <View style={styles.pigLayerItem}>
-            <Text style={{ fontSize: 18 }}>{pigSkin}</Text>
-            <Text style={styles.pigLayerLabel}>Skin</Text>
-          </View>
-        </View>
+        <PigBgView bgId={pigBgId} style={styles.pigBg}>
+          <PigSkin skinId={pigSkinId} variant={pigSkinVariant as any} size={150} />
+        </PigBgView>
         {isOwner && (
-          <TouchableOpacity style={styles.pigCustomizeBtn} onPress={() => Alert.alert('Coming soon', 'La personalizzazione del maialino arriva presto!')}>
-            <Text style={styles.pigCustomizeBtnText}>Personalizza</Text>
-          </TouchableOpacity>
+          <View style={styles.pigLayers}>
+            <TouchableOpacity
+              style={styles.pigLayerItem}
+              onPress={() => router.push({ pathname: '/shop', params: { tab: 'skin' } } as any)}
+              activeOpacity={0.7}
+            >
+              <PigSkin skinId={pigSkinId} variant={pigSkinVariant as any} size={34} />
+              <Text style={styles.pigLayerLabel}>Maialino ›</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.pigLayerItem}
+              onPress={() => router.push({ pathname: '/shop', params: { tab: 'sfondo' } } as any)}
+              activeOpacity={0.7}
+            >
+              <PigBgView bgId={pigBgId} size={34} />
+              <Text style={styles.pigLayerLabel}>Sfondo ›</Text>
+            </TouchableOpacity>
+          </View>
         )}
       </View>
 
+      {/* ─── Grafico attività ─── */}
+      <Text style={styles.sectionTitle}>Andamento</Text>
+      <StatsChart logs={displayLogs} currentHearts={displayHearts} />
+
       {/* ─── Medaglie ─── */}
-      <Text style={styles.sectionTitle}>Medaglie — {earnedCount}/{medals.length}</Text>
+      <Text style={styles.sectionTitle}>Medaglie — {earnedCount}/{visibleTotal}</Text>
       <View style={styles.medalGrid}>
         {visibleMedals.map(m => (
           <TouchableOpacity
@@ -477,9 +732,26 @@ export default function ProfiloScreen() {
             <Text style={styles.modalIcon}>{selectedMedal?.earned ? selectedMedal.icon : '🔒'}</Text>
             <Text style={styles.modalName}>{selectedMedal?.name}</Text>
             <Text style={styles.modalDesc}>{selectedMedal?.desc}</Text>
-            <View style={[styles.modalStatus, { backgroundColor: selectedMedal?.earned ? '#e8f5e9' : '#fce4ec' }]}>
-              <Text style={[styles.modalStatusText, { color: selectedMedal?.earned ? '#2e7d32' : '#c62828' }]}>
-                {selectedMedal?.earned ? 'Sbloccata!' : 'Non ancora sbloccata'}
+
+            {/* Barra progresso */}
+            {selectedMedal && (
+              <View style={styles.modalProgressWrap}>
+                <View style={styles.modalProgressBg}>
+                  <View style={[styles.modalProgressFill, {
+                    width: `${Math.min((selectedMedal.current / selectedMedal.target) * 100, 100)}%` as any,
+                    backgroundColor: selectedMedal.earned ? '#4CAF50' : '#FFD700',
+                  }]} />
+                </View>
+                <Text style={styles.modalProgressText}>
+                  {selectedMedal.current} / {selectedMedal.target} {selectedMedal.unit}
+                  {' · '}{Math.round((selectedMedal.current / selectedMedal.target) * 100)}%
+                </Text>
+              </View>
+            )}
+
+            <View style={[styles.modalStatus, { backgroundColor: selectedMedal?.earned ? (isDark ? '#1c3320' : '#e8f5e9') : (isDark ? '#33181c' : '#fce4ec') }]}>
+              <Text style={[styles.modalStatusText, { color: selectedMedal?.earned ? (isDark ? '#7ed896' : '#2e7d32') : (isDark ? '#f0a0a0' : '#c62828') }]}>
+                {selectedMedal?.earned ? 'Sbloccata! 🎉' : 'Non ancora sbloccata'}
               </Text>
             </View>
           </View>
@@ -487,36 +759,58 @@ export default function ProfiloScreen() {
       </Modal>
 
       {/* ─── Statistiche ─── */}
-      {stats.length > 0 && (
-        <>
-          <Text style={styles.sectionTitle}>📊 {isOwner ? 'Le tue statistiche' : 'Statistiche'}</Text>
-          <View style={styles.statsGrid}>
-            {stats.map(s => (
-              <View key={s.id} style={styles.statCard}>
-                <Text style={styles.statIcon}>{s.icon}</Text>
-                <Text style={styles.statValue}>{s.value}</Text>
-                <Text style={styles.statLabel}>{s.label}</Text>
-              </View>
-            ))}
+      <Text style={styles.sectionTitle}>📊 {isOwner ? 'Le tue statistiche' : 'Statistiche'}</Text>
+      <View style={styles.statsGrid}>
+        {/* Missioni — sempre prime */}
+        <View style={styles.statCard}>
+          <Text style={styles.statIcon}>🎯</Text>
+          <Text style={styles.statValue}>#{missionStats.currentMission}</Text>
+          <Text style={styles.statLabel}>Miss. vita</Text>
+        </View>
+        <View style={styles.statCard}>
+          <Text style={styles.statIcon}>📅</Text>
+          <Text style={styles.statValue}>{missionStats.dailyDone}</Text>
+          <Text style={styles.statLabel}>Miss. giornaliere</Text>
+        </View>
+        <View style={styles.statCard}>
+          <Text style={styles.statIcon}>🤝</Text>
+          <Text style={styles.statValue}>{missionStats.tandemDone}</Text>
+          <Text style={styles.statLabel}>Miss. tandem</Text>
+        </View>
+        <View style={styles.statCard}>
+          <Text style={styles.statIcon}>🏰</Text>
+          <Text style={styles.statValue}>{missionStats.clanDone}</Text>
+          <Text style={styles.statLabel}>Miss. clan</Text>
+        </View>
+        {/* Attività sport e drink */}
+        {stats.map(s => (
+          <View key={s.id} style={styles.statCard}>
+            <Text style={styles.statIcon}>{s.icon}</Text>
+            <Text style={styles.statValue}>{s.value}</Text>
+            <Text style={styles.statLabel}>{s.label}</Text>
           </View>
-        </>
-      )}
+        ))}
+      </View>
+
+      {/* ─── Infortunio ─── */}
+      {injuryInfo.mode && injuryInfo.since && (() => {
+        const days = Math.floor((Date.now() - new Date(injuryInfo.since).getTime()) / 86400000);
+        return (
+          <View style={styles.injuryBanner}>
+            <Text style={styles.injuryBannerEmoji}>🩹</Text>
+            <View>
+              <Text style={styles.injuryBannerTitle}>Modalità Infortunio attiva</Text>
+              <Text style={styles.injuryBannerSub}>Da {days === 0 ? 'oggi' : `${days} giorn${days === 1 ? 'o' : 'i'}`} · Missioni e cuori ridotti</Text>
+            </View>
+          </View>
+        );
+      })()}
 
       {/* ─── Azioni (solo personale) ─── */}
       {isOwner && (
         <>
-          <TouchableOpacity style={styles.actionBtn} onPress={() => router.push('/regole' as any)}>
-            <Text style={styles.actionBtnText}>📖 Regole del gioco</Text>
-          </TouchableOpacity>
-
-          {['de.pasqual.matteo@gmail.com', 'andreasperti@yahoo.it'].includes(user?.email ?? '') && (
-            <TouchableOpacity style={styles.adminBtn} onPress={() => router.push('/admin' as any)}>
-              <Text style={styles.adminText}>⚙️ Admin</Text>
-            </TouchableOpacity>
-          )}
-
-          <TouchableOpacity style={styles.logoutBtn} onPress={handleLogout}>
-            <Text style={styles.logoutText}>Esci dall'account</Text>
+          <TouchableOpacity style={actionStyles.logoutBtn} onPress={handleLogout}>
+            <Text style={actionStyles.logoutText}>Esci dall'account</Text>
           </TouchableOpacity>
         </>
       )}
@@ -528,158 +822,208 @@ export default function ProfiloScreen() {
 
 const MEDAL_SIZE = (SCREEN_W - 48 - 4 * 12) / 5;
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f7f7f7' },
-  content: { padding: 24, paddingBottom: 48 },
+function makeStyles(colors: ThemeColors, isDark: boolean) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.bg },
+    content: { padding: 24, paddingBottom: 48 },
 
-  header: { alignItems: 'center', marginBottom: 24 },
-  avatarWrap: { position: 'relative', marginBottom: 10 },
-  avatarImg: { width: 100, height: 100, borderRadius: 50, borderWidth: 3, borderColor: '#FFD700' },
-  avatarPlaceholder: {
-    width: 100, height: 100, borderRadius: 50,
-    backgroundColor: '#FFD700', alignItems: 'center', justifyContent: 'center',
-    borderWidth: 3, borderColor: '#FFD700',
-  },
-  avatarEmoji: { fontSize: 48 },
-  avatarOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 50,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  editBadge: {
-    position: 'absolute', bottom: 0, right: 0,
-    backgroundColor: '#fff', borderRadius: 14, width: 28, height: 28,
-    alignItems: 'center', justifyContent: 'center',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.2, shadowRadius: 3, elevation: 3,
-  },
-  username: { fontSize: 22, fontWeight: '800', color: '#1a1a1a' },
-  email: { fontSize: 13, color: '#aaa', marginTop: 2 },
-  nameEditRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
-  nameInput: {
-    fontSize: 18, fontWeight: '700', color: '#1a1a1a',
-    borderBottomWidth: 2, borderBottomColor: '#FFD700',
-    paddingVertical: 4, paddingHorizontal: 8, minWidth: 120, textAlign: 'center',
-  },
-  nameBtn: { padding: 4 },
-  scoreChip: {
-    marginTop: 10, backgroundColor: '#fff', borderRadius: 20,
-    paddingHorizontal: 18, paddingVertical: 8,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.08, shadowRadius: 4, elevation: 2,
-  },
-  scoreChipText: { fontSize: 18, fontWeight: '800', color: '#E8445A' },
+    header: { alignItems: 'center', marginBottom: 24 },
+    avatarWrap: { position: 'relative', marginBottom: 10 },
+    avatarImg: { width: 100, height: 100, borderRadius: 50, borderWidth: 3, borderColor: '#FFD700' },
+    avatarPlaceholder: {
+      width: 100, height: 100, borderRadius: 50,
+      backgroundColor: '#FFD700', alignItems: 'center', justifyContent: 'center',
+      borderWidth: 3, borderColor: '#FFD700',
+    },
+    avatarEmoji: { fontSize: 48 },
+    avatarOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 50,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    editBadge: {
+      position: 'absolute', bottom: 0, right: 0,
+      backgroundColor: colors.card, borderRadius: 14, width: 28, height: 28,
+      alignItems: 'center', justifyContent: 'center',
+      shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: isDark ? 0 : 0.2, shadowRadius: 3, elevation: isDark ? 0 : 3,
+    },
+    username: { fontSize: 22, fontWeight: '800', color: colors.text },
+    email: { fontSize: 13, color: colors.textFaint, marginTop: 2 },
+    nameEditRow: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 2 },
+    nameInput: {
+      fontSize: 18, fontWeight: '700', color: colors.text,
+      borderBottomWidth: 2, borderBottomColor: '#FFD700',
+      paddingVertical: 4, paddingHorizontal: 8, minWidth: 120, textAlign: 'center',
+    },
+    nameBtn: { padding: 4 },
+    scoreChip: {
+      marginTop: 10, backgroundColor: colors.card, borderRadius: 20,
+      paddingHorizontal: 18, paddingVertical: 8,
+      shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: isDark ? 0 : 0.08, shadowRadius: 4, elevation: isDark ? 0 : 2,
+    },
+    scoreChipText: { fontSize: 18, fontWeight: '800', color: '#E8445A' },
 
-  sectionTitle: {
-    fontSize: 14, fontWeight: '700', color: '#1a1a1a',
-    marginBottom: 10, marginTop: 8,
-  },
+    sectionTitle: {
+      fontSize: 14, fontWeight: '700', color: colors.text,
+      marginBottom: 10, marginTop: 8,
+    },
 
-  // Mentality
-  mentalityCard: {
-    backgroundColor: '#fff', borderRadius: 18, padding: 20, marginBottom: 24,
-    borderWidth: 2, borderColor: '#4CAF50',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06, shadowRadius: 6, elevation: 2,
-  },
-  mentalityHeader: { marginBottom: 16 },
-  mentalityTitle: { fontSize: 16, fontWeight: '800', color: '#1a1a1a' },
-  mentalitySubtitle: { fontSize: 12, color: '#888', marginTop: 2 },
-  mentalityBody: { flexDirection: 'row', alignItems: 'center', gap: 20 },
-  mentalityInfo: { flex: 1 },
-  mentalityProgress: { fontSize: 28, fontWeight: '900', color: '#E8445A' },
-  mentalityHint: { fontSize: 12, color: '#888', marginTop: 2 },
+    // Mentality
+    mentalityCard: {
+      backgroundColor: colors.card, borderRadius: 18, padding: 20, marginBottom: 24,
+      borderWidth: 2, borderColor: '#4CAF50',
+      shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: isDark ? 0 : 0.06, shadowRadius: 6, elevation: isDark ? 0 : 2,
+    },
+    mentalityHeader: { marginBottom: 16 },
+    mentalityTitle: { fontSize: 16, fontWeight: '800', color: colors.text },
+    mentalitySubtitle: { fontSize: 12, color: colors.textDim, marginTop: 2 },
+    mentalityBody: { flexDirection: 'row', alignItems: 'center', gap: 20 },
+    mentalityInfo: { flex: 1 },
+    mentalityProgress: { fontSize: 28, fontWeight: '900', color: '#E8445A' },
+    mentalityHint: { fontSize: 12, color: colors.textDim, marginTop: 2 },
 
-  // Card Maialino
-  pigCard: {
-    backgroundColor: '#fff', borderRadius: 20, overflow: 'hidden',
-    marginBottom: 24, borderWidth: 3,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08, shadowRadius: 6, elevation: 3,
-  },
-  pigBg: {
-    alignItems: 'center', justifyContent: 'center',
-    paddingVertical: 28,
-  },
-  pigSkin: { fontSize: 72 },
-  pigLayers: {
-    flexDirection: 'row', justifyContent: 'space-around',
-    paddingVertical: 12, paddingHorizontal: 20,
-    borderTopWidth: 1, borderTopColor: '#f0f0f0',
-  },
-  pigLayerItem: { alignItems: 'center', gap: 4 },
-  pigLayerDot: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: '#e0e0e0' },
-  pigLayerLabel: { fontSize: 10, color: '#aaa', fontWeight: '600', textTransform: 'uppercase' },
-  pigCustomizeBtn: {
-    backgroundColor: '#FFD700', paddingVertical: 12, alignItems: 'center',
-  },
-  pigCustomizeBtnText: { fontSize: 14, fontWeight: '700', color: '#1a1a1a' },
+    // Card Maialino
+    pigCard: {
+      backgroundColor: colors.card, borderRadius: 20, overflow: 'hidden',
+      marginBottom: 24, borderWidth: 3,
+      shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: isDark ? 0 : 0.08, shadowRadius: 6, elevation: isDark ? 0 : 3,
+    },
+    pigBg: {
+      alignItems: 'center', justifyContent: 'center',
+      height: 276,
+    },
+    pigSkin: { fontSize: 72 },
+    pigLayers: {
+      flexDirection: 'row', justifyContent: 'space-around',
+      paddingVertical: 12, paddingHorizontal: 20,
+      borderTopWidth: 1, borderTopColor: colors.border,
+    },
+    pigLayerItem: { alignItems: 'center', gap: 4 },
+    pigLayerDot: { width: 22, height: 22, borderRadius: 11, borderWidth: 2, borderColor: colors.border },
+    pigLayerLabel: { fontSize: 10, color: colors.textFaint, fontWeight: '600', textTransform: 'uppercase' },
+    pigCustomizeBtn: {
+      backgroundColor: '#FFD700', paddingVertical: 12, alignItems: 'center',
+    },
+    pigCustomizeBtnText: { fontSize: 14, fontWeight: '700', color: '#1a1a1a' },
 
-  // Medaglie
-  medalGrid: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: 12,
-    marginBottom: 24, justifyContent: 'flex-start',
-  },
-  medalCircle: {
-    width: MEDAL_SIZE, height: MEDAL_SIZE, borderRadius: MEDAL_SIZE / 2,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  medalEarned: {
-    backgroundColor: '#FFF8E1', borderWidth: 2, borderColor: '#FFD700',
-    shadowColor: '#FFD700', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.3, shadowRadius: 4, elevation: 2,
-  },
-  medalLocked: {
-    backgroundColor: '#f0f0f0', borderWidth: 2, borderColor: '#e0e0e0',
-  },
-  medalIcon: { fontSize: MEDAL_SIZE * 0.45 },
+    // Medaglie
+    medalGrid: {
+      flexDirection: 'row', flexWrap: 'wrap', gap: 12,
+      marginBottom: 24, justifyContent: 'flex-start',
+    },
+    medalCircle: {
+      width: MEDAL_SIZE, height: MEDAL_SIZE, borderRadius: MEDAL_SIZE / 2,
+      alignItems: 'center', justifyContent: 'center',
+    },
+    medalEarned: {
+      backgroundColor: isDark ? '#332a0d' : '#FFF8E1', borderWidth: 2, borderColor: '#FFD700',
+      shadowColor: '#FFD700', shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: isDark ? 0 : 0.3, shadowRadius: 4, elevation: isDark ? 0 : 2,
+    },
+    medalLocked: {
+      backgroundColor: colors.bgAlt, borderWidth: 2, borderColor: colors.border,
+    },
+    medalIcon: { fontSize: MEDAL_SIZE * 0.45 },
 
-  // Modal medaglia
-  modalOverlay: {
-    flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
-    alignItems: 'center', justifyContent: 'center', padding: 40,
-  },
-  modalCard: {
-    backgroundColor: '#fff', borderRadius: 24, padding: 32,
-    alignItems: 'center', width: '100%', maxWidth: 300,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 8 },
-    shadowOpacity: 0.2, shadowRadius: 20, elevation: 10,
-  },
-  modalIcon: { fontSize: 56, marginBottom: 12 },
-  modalName: { fontSize: 20, fontWeight: '800', color: '#1a1a1a', marginBottom: 8, textAlign: 'center' },
-  modalDesc: { fontSize: 14, color: '#666', textAlign: 'center', lineHeight: 20, marginBottom: 16 },
-  modalStatus: { borderRadius: 12, paddingHorizontal: 16, paddingVertical: 8 },
-  modalStatusText: { fontSize: 13, fontWeight: '700' },
+    // Modal medaglia
+    modalOverlay: {
+      flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
+      alignItems: 'center', justifyContent: 'center', padding: 40,
+    },
+    modalCard: {
+      backgroundColor: colors.card, borderRadius: 24, padding: 32,
+      alignItems: 'center', width: '100%', maxWidth: 300,
+      shadowColor: '#000', shadowOffset: { width: 0, height: 8 },
+      shadowOpacity: isDark ? 0 : 0.2, shadowRadius: 20, elevation: isDark ? 0 : 10,
+    },
+    modalIcon: { fontSize: 56, marginBottom: 12 },
+    modalName: { fontSize: 20, fontWeight: '800', color: colors.text, marginBottom: 8, textAlign: 'center' },
+    modalDesc: { fontSize: 14, color: colors.textDim, textAlign: 'center', lineHeight: 20, marginBottom: 16 },
+    modalProgressWrap: { width: '100%', marginBottom: 16 },
+    modalProgressBg: { height: 10, backgroundColor: colors.border, borderRadius: 5, overflow: 'hidden', marginBottom: 6 },
+    modalProgressFill: { height: 10, borderRadius: 5 },
+    modalProgressText: { fontSize: 13, color: colors.textDim, textAlign: 'center', fontWeight: '600' },
+    modalStatus: { borderRadius: 12, paddingHorizontal: 16, paddingVertical: 8 },
+    modalStatusText: { fontSize: 13, fontWeight: '700' },
 
-  // Statistiche
-  statsGrid: {
-    flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 20,
-  },
-  statCard: {
-    backgroundColor: '#fff', borderRadius: 14, padding: 16,
-    alignItems: 'center', width: '47%',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.06, shadowRadius: 4, elevation: 2,
-  },
-  statIcon: { fontSize: 28, marginBottom: 6 },
-  statValue: { fontSize: 18, fontWeight: '800', color: '#1a1a1a', marginBottom: 2 },
-  statLabel: { fontSize: 11, color: '#aaa', textAlign: 'center' },
+    // Statistiche
+    statsGrid: {
+      flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20,
+    },
+    statCard: {
+      backgroundColor: colors.card, borderRadius: 12, padding: 8,
+      alignItems: 'center',
+      width: (SCREEN_W - 48 - 3 * 8) / 4,
+      shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: isDark ? 0 : 0.06, shadowRadius: 4, elevation: isDark ? 0 : 2,
+    },
+    statIcon: { fontSize: 18, marginBottom: 3 },
+    statValue: { fontSize: 12, fontWeight: '800', color: colors.text, marginBottom: 1, textAlign: 'center' },
+    statLabel: { fontSize: 8.5, color: colors.textFaint, textAlign: 'center', lineHeight: 11 },
 
-  // Azioni
-  actionBtn: {
-    backgroundColor: '#fff', borderRadius: 14, padding: 16,
-    alignItems: 'center', marginBottom: 10,
-    borderWidth: 1.5, borderColor: '#e0e0e0',
-  },
-  actionBtnText: { color: '#1a1a1a', fontWeight: '700', fontSize: 15 },
-  adminBtn: {
-    backgroundColor: '#1a1a1a', borderRadius: 14, padding: 16,
-    alignItems: 'center', marginBottom: 10,
-  },
-  adminText: { color: '#FFD700', fontWeight: '700', fontSize: 15 },
-  logoutBtn: {
-    backgroundColor: '#ff3b30', borderRadius: 14, padding: 16,
-    alignItems: 'center', marginTop: 4,
-  },
-  logoutText: { color: '#fff', fontWeight: '700', fontSize: 15 },
-});
+    // Infortunio
+    injuryBanner: {
+      flexDirection: 'row', alignItems: 'center',
+      backgroundColor: isDark ? '#301818' : '#FFF0F0', borderRadius: 14,
+      padding: 14, marginTop: 12, gap: 12,
+      borderWidth: 1, borderColor: isDark ? '#5a2a2a' : '#FFCCCC',
+    },
+    injuryBannerEmoji: { fontSize: 28 },
+    injuryBannerTitle: { fontSize: 14, fontWeight: '800', color: isDark ? '#ff8a8a' : '#cc3333' },
+    injuryBannerSub: { fontSize: 12, color: colors.textFaint, marginTop: 2 },
+
+  });
+}
+
+function makeChartStyles(colors: ThemeColors, isDark: boolean) {
+  return StyleSheet.create({
+    card: {
+      backgroundColor: colors.card, borderRadius: 18, padding: 16, marginBottom: 24,
+      shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: isDark ? 0 : 0.06, shadowRadius: 6, elevation: isDark ? 0 : 2,
+    },
+    selector: {
+      flexDirection: 'row', backgroundColor: colors.bgAlt,
+      borderRadius: 10, padding: 3, marginBottom: 16,
+    },
+    selectorBtn: {
+      flex: 1, paddingVertical: 7, borderRadius: 8, alignItems: 'center',
+    },
+    selectorBtnActive: { backgroundColor: colors.card, shadowColor: '#000', shadowOpacity: isDark ? 0 : 0.08, shadowRadius: 3, elevation: isDark ? 0 : 2 },
+    selectorText: { fontSize: 13, fontWeight: '600', color: colors.textFaint },
+    selectorTextActive: { color: colors.text, fontWeight: '700' },
+
+    summary: {
+      flexDirection: 'row', borderTopWidth: 1, borderTopColor: colors.border, paddingTop: 12,
+    },
+    summaryItem: { flex: 1, alignItems: 'center' },
+    summaryVal: { fontSize: 17, fontWeight: '900', color: colors.text },
+    summaryLbl: { fontSize: 11, color: colors.textFaint, marginTop: 2 },
+    summaryDivider: { width: 1, backgroundColor: colors.border, marginVertical: 4 },
+  });
+}
+
+function makeActionStyles(colors: ThemeColors, isDark: boolean) {
+  return StyleSheet.create({
+    actionBtn: {
+      backgroundColor: colors.card, borderRadius: 14, padding: 16,
+      alignItems: 'center', marginBottom: 10,
+      borderWidth: 1.5, borderColor: colors.border,
+    },
+    actionBtnText: { color: colors.text, fontWeight: '700', fontSize: 15 },
+    adminBtn: {
+      backgroundColor: '#1a1a1a', borderRadius: 14, padding: 16,
+      alignItems: 'center', marginBottom: 10,
+    },
+    adminText: { color: '#FFD700', fontWeight: '700', fontSize: 15 },
+    logoutBtn: {
+      backgroundColor: '#ff3b30', borderRadius: 14, padding: 16,
+      alignItems: 'center', marginTop: 4,
+    },
+    logoutText: { color: '#fff', fontWeight: '700', fontSize: 15 },
+  });
+}

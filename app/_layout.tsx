@@ -1,14 +1,17 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
+import { DarkTheme, DefaultTheme, ThemeProvider as NavThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
 import { Stack } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
+import * as Notifications from 'expo-notifications';
 import React, { useEffect } from 'react';
 import { Platform, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { saveReceivedNotification } from '@/lib/notifications';
 
 import { useColorScheme } from '@/components/useColorScheme';
 import { AuthProvider, useAuth } from '@/context/AuthContext';
 import { AppProvider } from '@/context/AppContext';
+import { ThemeProvider as AppThemeProvider, useTheme } from '@/context/ThemeContext';
 
 // Inietta i meta tag iOS PWA nel DOM (necessario per standalone mode)
 function injectIOSPWATags() {
@@ -72,23 +75,51 @@ export default function RootLayout() {
     injectIOSPWATags();
   }, []);
 
+  useEffect(() => {
+    // Foreground: notifica arrivata con app aperta
+    const subFg = Notifications.addNotificationReceivedListener((notif) => {
+      const title = notif.request.content.title ?? '';
+      const body = notif.request.content.body ?? '';
+      saveReceivedNotification(title, body);
+    });
+
+    // Background/killed: utente ha tappato la notifica
+    const subBg = Notifications.addNotificationResponseReceivedListener((response) => {
+      const title = response.notification.request.content.title ?? '';
+      const body = response.notification.request.content.body ?? '';
+      saveReceivedNotification(title, body);
+    });
+
+    // App lanciata tappando una notifica (stato killed)
+    Notifications.getLastNotificationResponseAsync().then((response) => {
+      if (!response) return;
+      const title = response.notification.request.content.title ?? '';
+      const body = response.notification.request.content.body ?? '';
+      saveReceivedNotification(title, body);
+    });
+
+    return () => { subFg.remove(); subBg.remove(); };
+  }, []);
+
   return (
     <SafeAreaProvider>
       <AuthProvider>
-        <AppProvider>
-          <SplashGate fontsLoaded={!!loaded}>
-            <RootLayoutNav />
-          </SplashGate>
-        </AppProvider>
+        <AppThemeProvider>
+          <AppProvider>
+            <SplashGate fontsLoaded={!!loaded}>
+              <RootLayoutNav />
+            </SplashGate>
+          </AppProvider>
+        </AppThemeProvider>
       </AuthProvider>
     </SafeAreaProvider>
   );
 }
 
 function RootLayoutNav() {
-  const colorScheme = useColorScheme();
+  const { isDark, colors } = useTheme();
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
+    <NavThemeProvider value={isDark ? DarkTheme : DefaultTheme}>
       <Stack>
         <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
         <Stack.Screen name="(auth)" options={{ headerShown: false, animation: 'fade' }} />
@@ -97,8 +128,8 @@ function RootLayoutNav() {
           options={{
             title: 'Profilo personale',
             presentation: 'modal',
-            headerStyle: { backgroundColor: '#fff' },
-            headerTitleStyle: { fontWeight: '700', color: '#1a1a1a' },
+            headerStyle: { backgroundColor: colors.card },
+            headerTitleStyle: { fontWeight: '700', color: colors.text },
             headerShadowVisible: false,
           }}
         />
@@ -107,8 +138,17 @@ function RootLayoutNav() {
           options={{
             title: '📖 Regole del gioco',
             presentation: 'modal',
-            headerStyle: { backgroundColor: '#fff' },
-            headerTitleStyle: { fontWeight: '700', color: '#1a1a1a' },
+            headerStyle: { backgroundColor: colors.card },
+            headerTitleStyle: { fontWeight: '700', color: colors.text },
+            headerShadowVisible: false,
+          }}
+        />
+        <Stack.Screen
+          name="reset-password"
+          options={{
+            title: 'Nuova password',
+            headerStyle: { backgroundColor: colors.card },
+            headerTitleStyle: { fontWeight: '700', color: colors.text },
             headerShadowVisible: false,
           }}
         />
@@ -123,7 +163,26 @@ function RootLayoutNav() {
             headerTintColor: '#FFD700',
           }}
         />
+        <Stack.Screen
+          name="notifiche"
+          options={{
+            title: '🔔 Notifiche',
+            presentation: 'modal',
+            headerStyle: { backgroundColor: colors.card },
+            headerTitleStyle: { fontWeight: '700', color: colors.text },
+            headerShadowVisible: false,
+          }}
+        />
+        <Stack.Screen
+          name="shop"
+          options={{
+            title: '🐷 La Stalla',
+            headerStyle: { backgroundColor: colors.card },
+            headerTitleStyle: { fontWeight: '800', color: colors.text },
+            headerShadowVisible: false,
+          }}
+        />
       </Stack>
-    </ThemeProvider>
+    </NavThemeProvider>
   );
 }

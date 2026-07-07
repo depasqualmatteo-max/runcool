@@ -87,7 +87,8 @@
           "requestPermissionsRationale": "RunCool usa Health Connect per importare i tuoi allenamenti e calcolare i cuori guadagnati 🐷"
         }
       ],
-      "./plugins/withHealthConnectDelegate.js"
+      "./plugins/withHealthConnectDelegate.js",
+      "@react-native-community/datetimepicker"
     ],
     "updates": {
       "url": "https://u.expo.dev/730ff266-09d0-4b0a-94b0-9891663f40aa",

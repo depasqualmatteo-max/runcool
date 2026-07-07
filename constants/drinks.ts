@@ -9,7 +9,9 @@ export const DRINKS: DrinkDefinition[] = [
   { id: 'calice_vino',    name: 'Calice di Vino',     calories: 120, icon: '🍷', heartsLost: 1 },
   { id: 'cocktail',       name: 'Cocktail',           calories: 240, icon: '🍹', heartsLost: 2 },
   { id: 'amaro',          name: 'Amaro',              calories: 120, icon: '🥃', heartsLost: 1 },
-  { id: 'bottiglia_vino', name: 'Bottiglia di Vino',  calories: 720, icon: '🍾', heartsLost: 6, hasQuantityPrompt: true },
+  { id: 'bottiglia_vino',   name: 'Bottiglia di Vino',  calories: 720, icon: '🍾', heartsLost: 6, hasQuantityPrompt: true },
+  { id: 'evento_matrimonio', name: 'Matrimonio',         calories: 0,   icon: '💍', heartsLost: 15 },
+  { id: 'evento_barca',      name: 'Giornata in barca',  calories: 0,   icon: '⛵', heartsLost: 7 },
 ];
 
 export const DRINK_MAP: Record<DrinkId, DrinkDefinition> = Object.fromEntries(

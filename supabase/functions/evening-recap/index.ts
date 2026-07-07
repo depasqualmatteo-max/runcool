@@ -5,80 +5,98 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!,
 );
 
-// Recap serale: riepilogo delle attività fisiche svolte da TUTTI gli utenti nella giornata
-// (in futuro filtrabile per "amici" — per ora invia a tutti gli iscritti a notif_pref = 'evening_recap')
 Deno.serve(async (req) => {
-  // Sicurezza: accetta solo richieste con il token corretto (chiamata da cron esterno tipo cron-job.org)
   const auth = req.headers.get('authorization');
-  if (auth !== `Bearer ${Deno.env.get('CRON_SECRET')}`) {
+  const secret = Deno.env.get('CRON_SECRET') ?? 'runcool_cron_2024_secret';
+  if (auth !== `Bearer ${secret}`) {
     return new Response('Unauthorized', { status: 401 });
   }
 
-  // Inizio/fine della giornata corrente (UTC — adattare se serve fuso orario specifico)
   const now = new Date();
   const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0).toISOString();
 
-  // Tutte le attività sportive (workout) loggate oggi da TUTTI gli utenti
-  const { data: workoutLogs } = await supabase
+  // Tutti i log di oggi (workout + drink) per calcolare cuori e missioni
+  const { data: allLogs } = await supabase
     .from('logs')
-    .select('user_id, item_name, type')
-    .eq('type', 'workout')
+    .select('user_id, type, item_id, hearts_delta')
     .gte('created_at', startOfDay);
 
-  if (!workoutLogs || workoutLogs.length === 0) {
+  const workoutLogs = (allLogs ?? []).filter((l) => l.type === 'workout');
+
+  if (workoutLogs.length === 0) {
     return new Response(JSON.stringify({ sent: 0, reason: 'no activity today' }), { status: 200 });
   }
 
-  // Prendi gli username degli autori
-  const userIds = [...new Set(workoutLogs.map((l) => l.user_id))];
+  // Cuori guadagnati oggi per utente (solo workout, hearts_delta positivo)
+  const heartsByUser: Record<string, number> = {};
+  workoutLogs.forEach((l) => {
+    heartsByUser[l.user_id] = (heartsByUser[l.user_id] ?? 0) + (l.hearts_delta ?? 0);
+  });
+
+  // Username di chi si è allenato
+  const activeUserIds = Object.keys(heartsByUser);
   const { data: actors } = await supabase
     .from('profiles')
     .select('id, username')
-    .in('id', userIds);
+    .in('id', activeUserIds);
 
   const usernameMap: Record<string, string> = {};
   (actors ?? []).forEach((a) => { usernameMap[a.id] = a.username; });
 
-  // Conta attività per utente (es. "Matteo: Corsa ×2, Palestra ×1")
-  const byUser: Record<string, Record<string, number>> = {};
-  workoutLogs.forEach((l) => {
-    const uname = usernameMap[l.user_id] ?? '???';
-    byUser[uname] = byUser[uname] ?? {};
-    byUser[uname][l.item_name] = (byUser[uname][l.item_name] ?? 0) + 1;
-  });
+  // Classifica cuori: "Andrea +12 ❤️ | Matteo +8 ❤️ | ..."
+  const ranked = Object.entries(heartsByUser)
+    .sort(([, a], [, b]) => b - a)
+    .map(([uid, h]) => `${usernameMap[uid] ?? '???'} +${h} ❤️`);
 
-  const lines = Object.entries(byUser).map(([uname, items]) => {
-    const itemsStr = Object.entries(items).map(([name, count]) => count > 1 ? `${name} ×${count}` : name).join(', ');
-    return `${uname}: ${itemsStr}`;
-  });
+  const recapBody = ranked.length > 3
+    ? `${ranked.slice(0, 3).join(' | ')} e altri ${ranked.length - 3}...`
+    : ranked.join(' | ');
 
-  const recapBody = lines.length > 3
-    ? `${lines.slice(0, 3).join(' | ')} e altri ${lines.length - 3}...`
-    : lines.join(' | ');
-
-  // Iscritti al recap serale
+  // Iscritti al recap serale (evening_recap + every_activity) — con o senza push token
   const { data: subs } = await supabase
     .from('profiles')
     .select('id, push_token')
-    .eq('notif_pref', 'evening_recap')
-    .not('push_token', 'is', null);
+    .in('notif_pref', ['evening_recap', 'every_activity']);
 
   if (!subs || subs.length === 0) {
     return new Response(JSON.stringify({ sent: 0, reason: 'no subscribers' }), { status: 200 });
   }
 
-  const notifications = subs.map((s) => ({
-    to: s.push_token,
-    title: 'RunCool — Recap della giornata 🌙',
-    body: `Oggi si sono allenati: ${recapBody}`,
-    sound: 'default',
-  }));
+  const title = 'Cosa hanno fatto i maialini oggi? 🐷';
+  const dbRows: { user_id: string; title: string; body: string }[] = [];
+  const pushMessages: object[] = [];
 
-  await fetch('https://exp.host/--/api/v2/push/send', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-    body: JSON.stringify(notifications),
-  });
+  for (const sub of subs) {
+    const userLogs = (allLogs ?? []).filter((l) => l.user_id === sub.id);
+    const hasMentality = userLogs.some((l) => l.type === 'workout' && l.item_id === 'mentality');
+    const hasDrunk = userLogs.some((l) => l.type === 'drink');
+
+    const reminders: string[] = [];
+    if (!hasMentality) reminders.push('🧠 Apri l\'app per mentality e focus... o grufoli nel fango?');
+    if (!hasDrunk) reminders.push('😏 Non hai bevuto veramente?');
+
+    const body = reminders.length > 0
+      ? `${recapBody}\n\n${reminders.join(' · ')}`
+      : recapBody;
+
+    dbRows.push({ user_id: sub.id, title, body });
+
+    if (sub.push_token) {
+      pushMessages.push({ to: sub.push_token, title, body, sound: 'default' });
+    }
+  }
+
+  // Salva nel DB per tutti
+  await supabase.from('notifications').insert(dbRows);
+
+  // Push solo a chi ha il token
+  if (pushMessages.length > 0) {
+    await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify(pushMessages),
+    });
+  }
 
   return new Response(JSON.stringify({ sent: notifications.length }), {
     headers: { 'Content-Type': 'application/json' },

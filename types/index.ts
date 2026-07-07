@@ -4,7 +4,9 @@ export type DrinkId =
   | 'calice_vino'
   | 'cocktail'
   | 'amaro'
-  | 'bottiglia_vino';
+  | 'bottiglia_vino'
+  | 'evento_matrimonio'
+  | 'evento_barca';
 
 export type WorkoutId =
   | 'corsa'
@@ -18,7 +20,15 @@ export type WorkoutId =
   | 'nuoto'
   | 'ciclismo'
   | 'boxe'
-  | 'danza';
+  | 'danza'
+  | 'ferrata'
+  | 'arrampicata'
+  | 'idrospeed'
+  | 'subacquea'
+  | 'paintball'
+  | 'surf'
+  | 'parco_avventura'
+  | 'vela';
 
 export type WorkoutInputType = 'duration' | 'km' | 'km_elevation';
 
@@ -38,6 +48,7 @@ export interface WorkoutDefinition {
   inputType: WorkoutInputType;
   calPerMin?: number;
   calPerKm?: number;
+  heartsPerHour?: number; // per calcolo manuale basato sul tempo
 }
 
 export interface DrinkLog {

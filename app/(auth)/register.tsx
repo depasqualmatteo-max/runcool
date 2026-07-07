@@ -1,13 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, StyleSheet,
   KeyboardAvoidingView, Platform, ScrollView, Alert,
 } from 'react-native';
 import { Redirect, useRouter } from 'expo-router';
 import { useAuth } from '@/context/AuthContext';
+import { useTheme } from '@/context/ThemeContext';
+import type { ThemeColors } from '@/constants/Colors';
 
 export default function RegisterScreen() {
   const { user, register, isLoading } = useAuth();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [username, setUsername] = useState('');
@@ -29,7 +33,7 @@ export default function RegisterScreen() {
     setLoading(true);
     try {
       await register(email.trim(), username.trim(), password);
-      router.replace('/(tabs)');
+      router.replace('/regole?onboarding=1');
     } catch (e: any) {
       Alert.alert('Ops', e.message);
     } finally {
@@ -100,33 +104,35 @@ export default function RegisterScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: {
-    flexGrow: 1, backgroundColor: '#f7f7f7',
-    alignItems: 'center', justifyContent: 'center', padding: 32,
-  },
-  logo: { fontSize: 64, marginBottom: 12 },
-  title: { fontSize: 26, fontWeight: '800', color: '#1a1a1a', textAlign: 'center', marginBottom: 6 },
-  subtitle: { fontSize: 15, color: '#aaa', marginBottom: 40 },
+function makeStyles(colors: ThemeColors, isDark: boolean) {
+  return StyleSheet.create({
+    container: {
+      flexGrow: 1, backgroundColor: colors.bg,
+      alignItems: 'center', justifyContent: 'center', padding: 32,
+    },
+    logo: { fontSize: 64, marginBottom: 12 },
+    title: { fontSize: 26, fontWeight: '800', color: colors.text, textAlign: 'center', marginBottom: 6 },
+    subtitle: { fontSize: 15, color: colors.textFaint, marginBottom: 40 },
 
-  form: { width: '100%' },
-  label: { fontSize: 13, fontWeight: '700', color: '#555', marginBottom: 6, letterSpacing: 0.5 },
-  input: {
-    backgroundColor: '#fff', borderRadius: 12, padding: 16,
-    fontSize: 16, color: '#1a1a1a', marginBottom: 20,
-    borderWidth: 1.5, borderColor: '#eee',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04, shadowRadius: 3, elevation: 1,
-  },
-  button: {
-    backgroundColor: '#E8445A', borderRadius: 14, padding: 18,
-    alignItems: 'center', marginBottom: 16,
-    shadowColor: '#E8445A', shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3, shadowRadius: 8, elevation: 6,
-  },
-  buttonDisabled: { backgroundColor: '#ddd', shadowOpacity: 0 },
-  buttonText: { color: '#fff', fontSize: 17, fontWeight: '700' },
-  secondaryButton: { alignItems: 'center', padding: 8 },
-  secondaryText: { fontSize: 14, color: '#888' },
-  link: { color: '#E8445A', fontWeight: '700' },
-});
+    form: { width: '100%' },
+    label: { fontSize: 13, fontWeight: '700', color: colors.textDim, marginBottom: 6, letterSpacing: 0.5 },
+    input: {
+      backgroundColor: colors.card, borderRadius: 12, padding: 16,
+      fontSize: 16, color: colors.text, marginBottom: 20,
+      borderWidth: 1.5, borderColor: colors.border,
+      shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: isDark ? 0 : 0.04, shadowRadius: 3, elevation: isDark ? 0 : 1,
+    },
+    button: {
+      backgroundColor: '#E8445A', borderRadius: 14, padding: 18,
+      alignItems: 'center', marginBottom: 16,
+      shadowColor: '#E8445A', shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3, shadowRadius: 8, elevation: 6,
+    },
+    buttonDisabled: { backgroundColor: isDark ? '#3a3a3a' : '#ddd', shadowOpacity: 0 },
+    buttonText: { color: '#fff', fontSize: 17, fontWeight: '700' },
+    secondaryButton: { alignItems: 'center', padding: 8 },
+    secondaryText: { fontSize: 14, color: colors.textDim },
+    link: { color: '#E8445A', fontWeight: '700' },
+  });
+}

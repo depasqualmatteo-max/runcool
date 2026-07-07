@@ -1,12 +1,15 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, FlatList,
-  StyleSheet, Platform, Image, ActivityIndicator,
+  StyleSheet, Platform, Image, ActivityIndicator, Keyboard,
+  Modal, KeyboardAvoidingView,
 } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
+import { useTheme } from '@/context/ThemeContext';
+import type { ThemeColors } from '@/constants/Colors';
 
 type ChatMode = 'global' | 'clan';
 
@@ -21,6 +24,8 @@ interface Message {
 }
 
 function Avatar({ uri, isMe }: { uri: string | null; isMe: boolean }) {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   return (
     <View style={styles.avatar}>
       {uri
@@ -32,12 +37,16 @@ function Avatar({ uri, isMe }: { uri: string | null; isMe: boolean }) {
 
 export default function ChatScreen() {
   const { user } = useAuth();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const [mode, setMode] = useState<ChatMode>('global');
   const [messages, setMessages] = useState<Message[]>([]);
   const [text, setText] = useState('');
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
+  const [inputOpen, setInputOpen] = useState(false);
   const listRef = useRef<FlatList>(null);
+  const modalInputRef = useRef<TextInput>(null);
 
   const scrollToBottom = useCallback((animated = true) => {
     setTimeout(() => listRef.current?.scrollToEnd({ animated }), 80);
@@ -92,6 +101,7 @@ export default function ChatScreen() {
     if (mode === 'clan' && !user.clanId) return;
     const msgText = text.trim();
     setText('');
+    setInputOpen(false);
     setSending(true);
     try {
       await supabase.from('messages').insert({
@@ -115,7 +125,7 @@ export default function ChatScreen() {
         <Avatar uri={item.avatar_url} isMe={isMe} />
         <View style={[styles.bubble, isMe ? styles.bubbleMe : styles.bubbleThem]}>
           {!isMe && <Text style={styles.bubbleUser}>{item.username}</Text>}
-          <Text style={[styles.bubbleText, isMe && styles.bubbleTextMe]}>{item.text}</Text>
+          <Text style={[styles.bubbleText, isMe && styles.bubbleTextMe, !isMe && { color: '#1a1a1a' }]}>{item.text}</Text>
           <Text style={[styles.bubbleTime, isMe && styles.bubbleTimeMe]}>
             {format(new Date(item.created_at), 'HH:mm', { locale: it })}
           </Text>
@@ -173,68 +183,88 @@ export default function ChatScreen() {
         />
       )}
 
-      {/* Input */}
-      <View style={styles.inputBar}>
-        <TextInput
-          style={styles.input}
-          value={text}
-          onChangeText={setText}
-          placeholder={mode === 'clan' ? 'Scrivi al clan...' : 'Scrivi a tutti...'}
-          placeholderTextColor="#bbb"
-          multiline
-          maxLength={500}
-          onSubmitEditing={Platform.OS === 'web' ? send : undefined}
-          blurOnSubmit={false}
-        />
-        <TouchableOpacity
-          style={[styles.sendBtn, (!text.trim() || sending) && styles.sendBtnDisabled]}
-          onPress={send}
-          disabled={!text.trim() || sending}
-        >
+      {/* Input bar — tap apre modal */}
+      <TouchableOpacity style={styles.inputBar} onPress={() => setInputOpen(true)} activeOpacity={0.8}>
+        <Text style={[styles.input, { color: text ? colors.text : colors.textFaint, paddingTop: 10 }]} numberOfLines={1}>
+          {text || (mode === 'clan' ? 'Scrivi al clan...' : 'Scrivi a tutti...')}
+        </Text>
+        <View style={[styles.sendBtn, sending && styles.sendBtnDisabled]}>
           <Text style={styles.sendIcon}>➤</Text>
-        </TouchableOpacity>
-      </View>
+        </View>
+      </TouchableOpacity>
+
+      {/* Modal input — si apre sopra la tastiera */}
+      <Modal visible={inputOpen} transparent animationType="fade" onRequestClose={() => setInputOpen(false)} onShow={() => setTimeout(() => modalInputRef.current?.focus(), 50)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setInputOpen(false)} />
+        <KeyboardAvoidingView behavior="padding" style={styles.modalKAV}>
+          <View style={styles.modalInputBar}>
+            <TextInput
+              ref={modalInputRef}
+              style={styles.input}
+              value={text}
+              onChangeText={setText}
+              placeholder={mode === 'clan' ? 'Scrivi al clan...' : 'Scrivi a tutti...'}
+              placeholderTextColor="#bbb"
+              multiline
+              maxLength={500}
+              blurOnSubmit={false}
+            />
+            <TouchableOpacity
+              style={[styles.sendBtn, (!text.trim() || sending) && styles.sendBtnDisabled]}
+              onPress={send}
+              disabled={!text.trim() || sending}
+            >
+              <Text style={styles.sendIcon}>➤</Text>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f7f7f7' },
-  toggle: {
-    flexDirection: 'row',
-    marginHorizontal: 16,
-    marginTop: 10,
-    marginBottom: 6,
-    backgroundColor: '#e8e8e8',
-    borderRadius: 12,
-    padding: 4,
-  },
-  toggleBtn: { flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: 'center' },
-  toggleBtnActive: { backgroundColor: '#fff', elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
-  toggleText: { fontSize: 14, fontWeight: '600', color: '#888' },
-  toggleTextActive: { color: '#1a1a1a' },
-  toggleTextDisabled: { color: '#ccc' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
-  emptyEmoji: { fontSize: 48 },
-  emptyText: { fontSize: 16, fontWeight: '700', color: '#ccc' },
-  emptyHint: { fontSize: 13, color: '#ddd' },
-  list: { padding: 12, paddingBottom: 4, gap: 6 },
-  msgRow: { flexDirection: 'row-reverse', alignItems: 'flex-end', gap: 8, marginBottom: 2 },
-  msgRowMe: { flexDirection: 'row' },
-  avatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: '#eee', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 },
-  avatarImg: { width: 34, height: 34, borderRadius: 17 },
-  avatarEmoji: { fontSize: 18 },
-  bubble: { maxWidth: '70%', borderRadius: 18, paddingHorizontal: 13, paddingVertical: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1 },
-  bubbleMe: { backgroundColor: '#fff', borderBottomLeftRadius: 4 },
-  bubbleThem: { backgroundColor: '#FFD700', borderBottomRightRadius: 4 },
-  bubbleUser: { fontSize: 11, fontWeight: '700', color: '#E8445A', marginBottom: 2 },
-  bubbleText: { fontSize: 15, color: '#1a1a1a', lineHeight: 20 },
-  bubbleTextMe: { color: '#1a1a1a' },
-  bubbleTime: { fontSize: 10, color: '#aaa', marginTop: 3, textAlign: 'right' },
-  bubbleTimeMe: { color: '#aaa' },
-  inputBar: { flexDirection: 'row', alignItems: 'flex-end', backgroundColor: '#fff', borderTopWidth: 1, borderTopColor: '#eee', padding: 10, gap: 8, paddingBottom: Platform.OS === 'ios' ? 24 : 10 },
-  input: { flex: 1, backgroundColor: '#f7f7f7', borderRadius: 22, paddingHorizontal: 16, paddingVertical: Platform.OS === 'web' ? 10 : 8, fontSize: 15, color: '#1a1a1a', maxHeight: 120, borderWidth: 1, borderColor: '#eee', ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) },
-  sendBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#FFD700', alignItems: 'center', justifyContent: 'center' },
-  sendBtnDisabled: { backgroundColor: '#e8e8e8' },
-  sendIcon: { fontSize: 16, color: '#1a1a1a', marginLeft: 2 },
-});
+function makeStyles(colors: ThemeColors, isDark: boolean) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.bg },
+    toggle: {
+      flexDirection: 'row',
+      marginHorizontal: 16,
+      marginTop: 10,
+      marginBottom: 6,
+      backgroundColor: colors.bgAlt,
+      borderRadius: 12,
+      padding: 4,
+    },
+    toggleBtn: { flex: 1, paddingVertical: 8, borderRadius: 10, alignItems: 'center' },
+    toggleBtnActive: { backgroundColor: colors.card, elevation: isDark ? 0 : 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: isDark ? 0 : 0.1, shadowRadius: 2 },
+    toggleText: { fontSize: 14, fontWeight: '600', color: colors.textDim },
+    toggleTextActive: { color: colors.text },
+    toggleTextDisabled: { color: colors.textFaint },
+    center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 },
+    emptyEmoji: { fontSize: 48 },
+    emptyText: { fontSize: 16, fontWeight: '700', color: colors.textFaint },
+    emptyHint: { fontSize: 13, color: colors.textFaint },
+    list: { padding: 12, paddingBottom: 4, gap: 6 },
+    msgRow: { flexDirection: 'row-reverse', alignItems: 'flex-end', gap: 8, marginBottom: 2 },
+    msgRowMe: { flexDirection: 'row' },
+    avatar: { width: 34, height: 34, borderRadius: 17, backgroundColor: colors.bgAlt, alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 },
+    avatarImg: { width: 34, height: 34, borderRadius: 17 },
+    avatarEmoji: { fontSize: 18 },
+    bubble: { maxWidth: '70%', borderRadius: 18, paddingHorizontal: 13, paddingVertical: 8, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: isDark ? 0 : 0.05, shadowRadius: 3, elevation: isDark ? 0 : 1 },
+    bubbleMe: { backgroundColor: colors.card, borderBottomLeftRadius: 4 },
+    bubbleThem: { backgroundColor: '#FFD700', borderBottomRightRadius: 4 },
+    bubbleUser: { fontSize: 11, fontWeight: '700', color: '#E8445A', marginBottom: 2 },
+    bubbleText: { fontSize: 15, color: colors.text, lineHeight: 20 },
+    bubbleTextMe: { color: colors.text },
+    bubbleTime: { fontSize: 10, color: colors.textFaint, marginTop: 3, textAlign: 'right' },
+    bubbleTimeMe: { color: colors.textFaint },
+    inputBar: { flexDirection: 'row', alignItems: 'flex-end', backgroundColor: colors.card, borderTopWidth: 1, borderTopColor: colors.border, padding: 10, gap: 8, paddingBottom: Platform.OS === 'ios' ? 24 : 10 },
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.3)' },
+    modalKAV: { backgroundColor: colors.card, borderTopWidth: 1, borderTopColor: colors.border },
+    modalInputBar: { flexDirection: 'row', alignItems: 'flex-end', padding: 10, gap: 8, paddingBottom: Platform.OS === 'ios' ? 24 : 10 },
+    input: { flex: 1, backgroundColor: colors.bgAlt, borderRadius: 22, paddingHorizontal: 16, paddingVertical: Platform.OS === 'web' ? 10 : 8, fontSize: 15, color: colors.text, maxHeight: 120, borderWidth: 1, borderColor: colors.border, ...(Platform.OS === 'web' ? { outlineStyle: 'none' } as any : {}) },
+    sendBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#FFD700', alignItems: 'center', justifyContent: 'center' },
+    sendBtnDisabled: { backgroundColor: colors.border },
+    sendIcon: { fontSize: 16, color: '#1a1a1a', marginLeft: 2 },
+  });
+}

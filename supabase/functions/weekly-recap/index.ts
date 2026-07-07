@@ -71,6 +71,15 @@ Deno.serve(async (req) => {
     body: JSON.stringify(notifications),
   });
 
+  // Salva nel DB per lo storico
+  await supabase.from('notifications').insert(
+    users.map((u, i) => ({
+      user_id: u.id,
+      title: notifications[i].title,
+      body: notifications[i].body,
+    }))
+  );
+
   return new Response(JSON.stringify({ sent: notifications.length }), {
     headers: { 'Content-Type': 'application/json' },
   });

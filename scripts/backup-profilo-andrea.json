@@ -1,0 +1,29 @@
+﻿{
+    "pig_owned_skins":  [
+                            0,
+                            2,
+                            11,
+                            4
+                        ],
+    "pig_owned_pro_skins":  [
+
+                            ],
+    "pig_owned_gold_skins":  [
+
+                             ],
+    "pig_owned_pro_gold_skins":  [
+
+                                 ],
+    "pig_skin_points":  {
+
+                        },
+    "pig_owned_bgs":  [
+                          0,
+                          12,
+                          13
+                      ],
+    "tokens":  8,
+    "pig_skin":  2,
+    "pig_skin_variant":  "base",
+    "pig_bg":  12
+}

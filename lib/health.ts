@@ -44,10 +44,12 @@ const HEALTHKIT_TYPE_MAP: Record<number, { id: string; name: string }> = {
 // Health Connect exercise types → RunCool
 const HEALTH_CONNECT_TYPE_MAP: Record<number, { id: string; name: string }> = {
   56: { id: 'corsa',     name: 'Corsa' },
+  57: { id: 'corsa',     name: 'Corsa' }, // running treadmill
   79: { id: 'camminata', name: 'Camminata' },
   35: { id: 'hiit',      name: 'HIIT' },
   78: { id: 'palestra',  name: 'Palestra' },
   74: { id: 'tennis',    name: 'Tennis' },
+  48: { id: 'tennis',    name: 'Tennis' }, // tennis (tipo alternativo Garmin/Samsung)
   51: { id: 'padel',     name: 'Padel' },
   63: { id: 'calcetto',  name: 'Calcetto' },
   50: { id: 'pilates',   name: 'Pilates' },
@@ -60,6 +62,7 @@ const HEALTH_CONNECT_TYPE_MAP: Record<number, { id: string; name: string }> = {
   37: { id: 'camminata', name: 'Camminata' },
   55: { id: 'nuoto',     name: 'Nuoto' },
   22: { id: 'palestra',  name: 'Palestra' },
+  70: { id: 'palestra',  name: 'Palestra' }, // strength training (Garmin pesi)
   66: { id: 'camminata', name: 'Camminata' },
   11: { id: 'hiit',      name: 'HIIT' },
 };
@@ -255,6 +258,43 @@ async function fetchHealthConnectWorkouts(daysBack: number = 7): Promise<Importe
       catch (_) { return null; }
     }
 
+    // Helper: legge record grezzi ElevationGained (fallback per dislivello)
+    async function readElevationMeters(startTime: string, endTime: string): Promise<number> {
+      try {
+        const { records } = await readRecords('ElevationGained', {
+          timeRangeFilter: { operator: 'between', startTime, endTime },
+        });
+        if (!records || records.length === 0) return 0;
+        let total = 0;
+        for (const r of records) {
+          const e = (r as any).elevation;
+          if (e?.inMeters > 0) total += e.inMeters;
+        }
+        return total;
+      } catch (_) {
+        return 0;
+      }
+    }
+
+    // Helper: legge record grezzi e somma i metri (fallback per distanza)
+    async function readDistanceMeters(startTime: string, endTime: string): Promise<number> {
+      try {
+        const { records } = await readRecords('Distance', {
+          timeRangeFilter: { operator: 'between', startTime, endTime },
+        });
+        if (!records || records.length === 0) return 0;
+        let total = 0;
+        for (const r of records) {
+          const d = (r as any).distance;
+          if (d?.inMeters > 0) total += d.inMeters;
+          else if (d?.inKilometers > 0) total += d.inKilometers * 1000;
+        }
+        return total;
+      } catch (_) {
+        return 0;
+      }
+    }
+
     // Per ogni sessione, aggrega calorie/distanza/dislivello in parallelo
     const workouts: ImportedWorkout[] = await Promise.all(
       (sessions || []).map(async (s: any) => {
@@ -283,13 +323,42 @@ async function fetchHealthConnectWorkouts(daysBack: number = 7): Promise<Importe
         const totalCal = totalCalAgg?.ENERGY_TOTAL?.inKilocalories ?? 0;
         const calories = Math.round(activeCal > 0 ? activeCal : totalCal);
 
-        // Distanza
-        const km = distAgg?.DISTANCE?.inKilometers ?? 0;
-        const distanceKm = km > 0 ? Math.round(km * 100) / 100 : undefined;
+        // Distanza — prima prova aggregateRecord, poi fallback a readRecords grezzi
+        let distKm = 0;
+        if (distAgg) {
+          const d = distAgg as any;
+          if (d.DISTANCE?.inKilometers > 0) distKm = d.DISTANCE.inKilometers;
+          else if (d.DISTANCE?.inMeters > 0) distKm = d.DISTANCE.inMeters / 1000;
+          else if (d.DISTANCE_TOTAL?.inKilometers > 0) distKm = d.DISTANCE_TOTAL.inKilometers;
+          else if (d.DISTANCE_TOTAL?.inMeters > 0) distKm = d.DISTANCE_TOTAL.inMeters / 1000;
+          else {
+            for (const key of Object.keys(d)) {
+              const v = d[key];
+              if (v?.inKilometers > 0) { distKm = v.inKilometers; break; }
+              if (v?.inMeters > 0) { distKm = v.inMeters / 1000; break; }
+            }
+          }
+        }
+        // Fallback: leggi i record Distance grezzi e sommali
+        if (distKm === 0) {
+          const rawMeters = await readDistanceMeters(s.startTime, s.endTime);
+          if (rawMeters > 0) distKm = rawMeters / 1000;
+        }
+        const distanceKm = distKm > 0 ? Math.round(distKm * 100) / 100 : undefined;
 
         // Dislivello
-        const m = elevAgg?.ELEVATION_GAINED_TOTAL?.inMeters ?? 0;
-        const elevationMeters = m > 0 ? Math.round(m) : undefined;
+        let elevM = elevAgg?.ELEVATION_GAINED_TOTAL?.inMeters ?? elevAgg?.ELEVATION_GAINED?.inMeters ?? 0;
+        if (!elevM && elevAgg) {
+          for (const key of Object.keys(elevAgg)) {
+            const v = (elevAgg as any)[key];
+            if (v?.inMeters > 0) { elevM = v.inMeters; break; }
+          }
+        }
+        // Fallback: leggi record ElevationGained grezzi
+        if (!elevM) {
+          elevM = await readElevationMeters(s.startTime, s.endTime);
+        }
+        const elevationMeters = elevM > 0 ? Math.round(elevM) : undefined;
 
         return {
           id: s.metadata?.id || `hc_${start.getTime()}`,

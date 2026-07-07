@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { format, startOfWeek, endOfWeek, eachDayOfInterval, parseISO } from 'date-fns';
+import { format, startOfWeek, eachDayOfInterval, parseISO, subDays } from 'date-fns';
 
 // ─── MISSIONI SEQUENZIALI (100) ───────────────────────────────────────────────
 
@@ -121,9 +121,15 @@ export const SEQ_MISSIONS: SeqMission[] = [
 
 // ─── MISSIONI GIORNALIERE ──────────────────────────────────────────────────────
 
+function hashInt(n: number): number {
+  n = (Math.imul(n ^ (n >>> 16), 0x45d9f3b)) | 0;
+  n = (Math.imul(n ^ (n >>> 16), 0x45d9f3b)) | 0;
+  return (n ^ (n >>> 16)) >>> 0;
+}
+
 function seededRand(seed: number) {
-  let s = seed;
-  return () => { s = (s * 1664525 + 1013904223) & 0xffffffff; return (s >>> 0) / 0xffffffff; };
+  let s = hashInt(seed);
+  return () => { s = (Math.imul(s, 1664525) + 1013904223) | 0; return (s >>> 0) / 0x100000000; };
 }
 
 export interface DailyMissions {
@@ -144,37 +150,68 @@ export function getTodayDailyMissions(): DailyMissions {
 }
 
 export interface DailyProgress {
-  runKm: number;       // km corsi oggi
-  activityMin: number; // minuti attività oggi
-  noDrink: boolean;    // nessun drink oggi
+  runKm: number;
+  activityMin: number;
+  noDrink: boolean;
+  drankYesterday: boolean;
+  injuryMode: boolean;
+  injurySince: string | null;
 }
 
 export async function getDailyProgress(userId: string): Promise<DailyProgress> {
-  const today = format(new Date(), 'yyyy-MM-dd');
-  const { data: logs } = await supabase
+  // Calcola inizio/fine giornata locale in UTC (Italia = UTC+2 estate, UTC+1 inverno)
+  const nowLocal = new Date();
+  const todayStart = new Date(nowLocal.getFullYear(), nowLocal.getMonth(), nowLocal.getDate(), 0, 0, 0);
+  const todayEnd   = new Date(nowLocal.getFullYear(), nowLocal.getMonth(), nowLocal.getDate(), 23, 59, 59);
+  const yesterStart = new Date(todayStart.getTime() - 86400000);
+  const yesterEnd   = new Date(todayEnd.getTime()   - 86400000);
+
+  const todayIso = `${nowLocal.getFullYear()}-${String(nowLocal.getMonth()+1).padStart(2,'0')}-${String(nowLocal.getDate()).padStart(2,'0')}`;
+  const yesterIso = format(new Date(todayStart.getTime() - 86400000), 'yyyy-MM-dd');
+
+  // Log di oggi per corsa e attività (usa activity_date per rispettare date retroattive)
+  const { data: todayLogs } = await supabase
     .from('logs')
-    .select('type, quantity, duration_minutes, item_name')
+    .select('type, km, duration_minutes, item_id')
     .eq('user_id', userId)
-    .gte('created_at', `${today}T00:00:00`)
-    .lte('created_at', `${today}T23:59:59`);
+    .eq('activity_date', todayIso);
 
-  if (!logs) return { runKm: 0, activityMin: 0, noDrink: true };
+  // Drink di ieri
+  const { data: yesterdayDrinks } = await supabase
+    .from('logs')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('type', 'drink')
+    .eq('activity_date', yesterIso);
 
-  const drinks = logs.filter(l => l.type === 'drink');
+  const logs = todayLogs ?? [];
   const workouts = logs.filter(l => l.type === 'workout');
 
-  // km corsi oggi (somma corse)
+  // km corsi oggi: solo item_id = 'corsa', somma colonna km
   const runKm = workouts
-    .filter(l => (l.item_name ?? '').toLowerCase().includes('cors') || (l.item_name ?? '').toLowerCase().includes('run'))
-    .reduce((s, l) => s + (l.quantity ?? 0), 0);
+    .filter(l => l.item_id === 'corsa')
+    .reduce((s, l) => s + (l.km ?? 0), 0);
 
-  // minuti attività oggi
-  const activityMin = workouts.reduce((s, l) => s + (l.duration_minutes ?? 0), 0);
+  // minuti attività oggi (escludi corsa e mentality che hanno le proprie missioni)
+  const activityMin = workouts
+    .filter(l => l.item_id !== 'corsa' && l.item_id !== 'camminata' && l.item_id !== 'mentality')
+    .reduce((s, l) => s + (l.duration_minutes ?? 0), 0);
+
+  const drankYesterday = (yesterdayDrinks ?? []).length > 0;
+
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('injury_mode, injury_since')
+    .eq('id', userId)
+    .single();
 
   return {
     runKm,
     activityMin,
-    noDrink: drinks.length === 0,
+    noDrink: !drankYesterday,
+    drankYesterday,
+    injuryMode: profile?.injury_mode ?? false,
+    injurySince: profile?.injury_since ?? null,
   };
 }
 
@@ -187,62 +224,64 @@ export interface SeqProgress {
   completed: boolean;
 }
 
-export async function calcSeqProgress(mission: SeqMission, userId: string): Promise<SeqProgress> {
+export async function calcSeqProgress(mission: SeqMission, userId: string, missionStartedAt: string): Promise<SeqProgress> {
   const none = (v: number) => {
     const pct = Math.min(v / mission.target, 1);
     return { value: v, pct, displayValue: `${v} / ${mission.target}`, completed: pct >= 1 };
   };
 
+  const since = missionStartedAt; // filtra da quando la missione è stata assegnata
+
   try {
     switch (mission.type) {
       case 'corsa_singola': {
-        const { data } = await supabase.from('logs').select('quantity')
-          .eq('user_id', userId).eq('type', 'workout')
-          .or('item_name.ilike.%cors%,item_name.ilike.%run%')
-          .order('quantity', { ascending: false }).limit(1);
-        const best = data?.[0]?.quantity ?? 0;
-        return { value: best, pct: Math.min(best / mission.target, 1), displayValue: `${best.toFixed(1)} / ${mission.target} km`, completed: best >= mission.target };
+        const { data } = await supabase.from('logs').select('km')
+          .eq('user_id', userId).eq('type', 'workout').eq('item_id', 'corsa')
+          .gte('activity_date', since.slice(0, 10))
+          .order('km', { ascending: false }).limit(1);
+        const best = data?.[0]?.km ?? 0;
+        return { value: best, pct: Math.min(best / mission.target, 1), displayValue: `${Number(best).toFixed(1)} / ${mission.target} km`, completed: best >= mission.target };
       }
       case 'camminata': {
-        const { data } = await supabase.from('logs').select('quantity')
-          .eq('user_id', userId).eq('type', 'workout')
-          .or('item_name.ilike.%cammin%,item_name.ilike.%walk%,item_name.ilike.%hiking%')
-          .order('quantity', { ascending: false }).limit(1);
-        const best = data?.[0]?.quantity ?? 0;
-        return { value: best, pct: Math.min(best / mission.target, 1), displayValue: `${best.toFixed(1)} / ${mission.target} km`, completed: best >= mission.target };
+        const { data } = await supabase.from('logs').select('km')
+          .eq('user_id', userId).eq('type', 'workout').eq('item_id', 'camminata')
+          .gte('activity_date', since.slice(0, 10))
+          .order('km', { ascending: false }).limit(1);
+        const best = data?.[0]?.km ?? 0;
+        return { value: best, pct: Math.min(best / mission.target, 1), displayValue: `${Number(best).toFixed(1)} / ${mission.target} km`, completed: best >= mission.target };
       }
       case 'tempo_attivita': {
+        // Migliore sessione singola con durata >= target (escludi corsa che conta sui km)
         const { data } = await supabase.from('logs').select('duration_minutes')
           .eq('user_id', userId).eq('type', 'workout')
+          .neq('item_id', 'corsa').neq('item_id', 'camminata').neq('item_id', 'mentality')
+          .gte('activity_date', since.slice(0, 10))
+          .not('duration_minutes', 'is', null)
           .order('duration_minutes', { ascending: false }).limit(1);
         const best = data?.[0]?.duration_minutes ?? 0;
         return { value: best, pct: Math.min(best / mission.target, 1), displayValue: `${best} / ${mission.target} min`, completed: best >= mission.target };
       }
       case 'km_settimanali': {
-        // migliore settimana di sempre
-        const { data } = await supabase.from('logs').select('quantity, created_at')
-          .eq('user_id', userId).eq('type', 'workout')
-          .or('item_name.ilike.%cors%,item_name.ilike.%run%');
+        const { data } = await supabase.from('logs').select('km, activity_date, created_at')
+          .eq('user_id', userId).eq('type', 'workout').eq('item_id', 'corsa')
+          .gte('activity_date', since.slice(0, 10));
         if (!data || data.length === 0) return none(0);
-        // raggruppa per settimana
         const weeks: Record<string, number> = {};
         for (const l of data) {
-          const w = format(startOfWeek(parseISO(l.created_at), { weekStartsOn: 1 }), 'yyyy-ww');
-          weeks[w] = (weeks[w] ?? 0) + (l.quantity ?? 0);
+          const dateStr = l.activity_date ?? l.created_at.split('T')[0];
+          const w = format(startOfWeek(parseISO(dateStr), { weekStartsOn: 1 }), 'yyyy-ww');
+          weeks[w] = (weeks[w] ?? 0) + (l.km ?? 0);
         }
         const best = Math.max(...Object.values(weeks));
         return { value: best, pct: Math.min(best / mission.target, 1), displayValue: `${best.toFixed(1)} / ${mission.target} km`, completed: best >= mission.target };
       }
       case 'no_drink': {
-        // max giorni consecutivi senza drink
-        const { data: drinkLogs } = await supabase.from('logs').select('created_at')
-          .eq('user_id', userId).eq('type', 'drink').order('created_at');
-        const { data: allLogs } = await supabase.from('logs').select('created_at')
-          .eq('user_id', userId).order('created_at').limit(1);
-        if (!allLogs || allLogs.length === 0) return none(0);
-        const drinkDays = new Set((drinkLogs ?? []).map(l => l.created_at.split('T')[0]));
-        const start = parseISO(allLogs[0].created_at);
-        const end = new Date();
+        const { data: drinkLogs } = await supabase.from('logs').select('activity_date, created_at')
+          .eq('user_id', userId).eq('type', 'drink')
+          .gte('activity_date', since.slice(0, 10)).order('activity_date');
+        const drinkDays = new Set((drinkLogs ?? []).map(l => l.activity_date ?? l.created_at.split('T')[0]));
+        const start = parseISO(since);
+        const end = subDays(new Date(), 1); // escludi oggi: il giorno non è finito
         const days = eachDayOfInterval({ start, end });
         let maxStreak = 0, cur = 0;
         for (const d of days) {
@@ -252,10 +291,11 @@ export async function calcSeqProgress(mission: SeqMission, userId: string): Prom
         return { value: maxStreak, pct: Math.min(maxStreak / mission.target, 1), displayValue: `${maxStreak} / ${mission.target} giorni`, completed: maxStreak >= mission.target };
       }
       case 'mentality': {
-        const { data } = await supabase.from('logs').select('created_at')
-          .eq('user_id', userId).eq('type', 'mentality').order('created_at');
+        const { data } = await supabase.from('logs').select('activity_date, created_at')
+          .eq('user_id', userId).eq('item_id', 'mentality')
+          .gte('activity_date', since.slice(0, 10)).order('activity_date');
         if (!data || data.length === 0) return none(0);
-        const days = [...new Set(data.map(l => l.created_at.split('T')[0]))].sort();
+        const days = [...new Set(data.map(l => l.activity_date ?? l.created_at.split('T')[0]))].sort();
         let maxStreak = 1, cur = 1;
         for (let i = 1; i < days.length; i++) {
           const diff = (new Date(days[i]).getTime() - new Date(days[i-1]).getTime()) / 86400000;
@@ -265,11 +305,11 @@ export async function calcSeqProgress(mission: SeqMission, userId: string): Prom
         return { value: maxStreak, pct: Math.min(maxStreak / mission.target, 1), displayValue: `${maxStreak} / ${mission.target} consecutivi`, completed: maxStreak >= mission.target };
       }
       case 'camminata_dislivello': {
-        const { data } = await supabase.from('logs').select('elevation_gain')
-          .eq('user_id', userId).eq('type', 'workout')
-          .or('item_name.ilike.%cammin%,item_name.ilike.%hik%,item_name.ilike.%trek%')
-          .order('elevation_gain', { ascending: false }).limit(1);
-        const best = data?.[0]?.elevation_gain ?? 0;
+        const { data } = await supabase.from('logs').select('elevation_meters')
+          .eq('user_id', userId).eq('type', 'workout').eq('item_id', 'camminata')
+          .gte('activity_date', since.slice(0, 10))
+          .order('elevation_meters', { ascending: false }).limit(1);
+        const best = data?.[0]?.elevation_meters ?? 0;
         return { value: best, pct: Math.min(best / mission.target, 1), displayValue: `${best} / ${mission.target} m D+`, completed: best >= mission.target };
       }
       case 'missioni_giornaliere': {
@@ -291,16 +331,41 @@ export async function calcSeqProgress(mission: SeqMission, userId: string): Prom
 // Incrementa missione sequenziale completata
 export async function advanceSeqMission(userId: string, currentId: number) {
   if (currentId >= 100) return;
-  await supabase.from('profiles').update({ current_mission: currentId + 1 }).eq('id', userId);
+  await supabase.from('profiles').update({
+    current_mission: currentId + 1,
+    mission_started_at: new Date().toISOString(),
+  }).eq('id', userId);
 }
 
 // Incrementa contatore missioni giornaliere completate
 export async function incrementDailyMissionsDone(userId: string) {
-  await supabase.rpc('increment_daily_missions', { uid: userId }).catch(() => {
-    // fallback manuale
-    supabase.from('profiles').select('daily_missions_done').eq('id', userId).single().then(({ data }) => {
-      const n = (data?.daily_missions_done ?? 0) + 1;
-      supabase.from('profiles').update({ daily_missions_done: n }).eq('id', userId);
-    });
+  const { data } = await supabase.from('profiles').select('daily_missions_done').eq('id', userId).single();
+  const n = (data?.daily_missions_done ?? 0) + 1;
+  await supabase.from('profiles').update({ daily_missions_done: n }).eq('id', userId);
+}
+
+// Claim gettone missione giornaliera (bit: 1=run, 2=activity, 4=nodrink)
+// Ritorna true se il claim è andato a buon fine, false se già riscosso
+export async function claimDailyMission(userId: string, bit: 1 | 2 | 4): Promise<boolean> {
+  const today = format(new Date(), 'yyyy-MM-dd');
+  const { data, error } = await supabase.rpc('claim_daily_mission_atomic', {
+    p_user_id: userId,
+    p_bit: bit,
+    p_date: today,
   });
+  if (error) return false;
+  return data === true;
+}
+
+// Carica la mask dei claim giornalieri (resettata se data diversa da oggi)
+export async function getDailyClaimedMask(userId: string): Promise<number> {
+  const today = format(new Date(), 'yyyy-MM-dd');
+  const { data } = await supabase
+    .from('profiles')
+    .select('daily_claimed_date, daily_claimed_mask')
+    .eq('id', userId)
+    .single();
+  if (!data) return 0;
+  if (data.daily_claimed_date !== today) return 0;
+  return data.daily_claimed_mask ?? 0;
 }

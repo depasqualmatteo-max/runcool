@@ -12,7 +12,7 @@ export function calcHeartsLost(calories: number): number {
 export const SPORT_CAL_PER_HEART: Record<string, number> = {
   corsa: 120,
   pilates: 60,
-  camminata: 240,
+  camminata: 180,
 };
 export const DEFAULT_CAL_PER_HEART = 120;
 
@@ -22,5 +22,7 @@ export function calPerHeartForSport(sportId: string): number {
 
 export function calcHeartsGained(caloriesBurned: number, sportId?: string): number {
   const cph = sportId ? calPerHeartForSport(sportId) : DEFAULT_CAL_PER_HEART;
-  return Math.max(1, Math.floor(caloriesBurned / cph));
+  // Arrotonda: con cph=120 servono 80 kcal (2/3 della soglia) per scattare al cuore successivo,
+  // invece di richiedere le 120 kcal piene (floor puro)
+  return Math.floor((caloriesBurned + cph / 3) / cph);
 }

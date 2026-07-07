@@ -18,6 +18,7 @@ export interface MissionProgress {
   pct: number;
   displayValue: string;
   completed: boolean;
+  memberValues?: { id: string; value: number }[];
 }
 
 // ─── POOLS ───────────────────────────────────────────────────────────────────
@@ -42,10 +43,10 @@ const TANDEM_POOL: Record<MissionCategory, MissionDef[]> = {
     { category: 'camminata', tokens: 4, emoji: '🚶', label: 'Camminate 30 km o 1400 m D+', target: 30, targetKm: 30, targetElevation: 1400 },
   ],
   no_drink: [
-    { category: 'no_drink', tokens: 1, emoji: '🚫', label: 'Niente birra per 6 giorni su 14', target: 6 },
-    { category: 'no_drink', tokens: 2, emoji: '🚫', label: 'Niente birra per 8 giorni su 14', target: 8 },
-    { category: 'no_drink', tokens: 3, emoji: '🚫', label: 'Niente birra per 10 giorni su 14', target: 10 },
-    { category: 'no_drink', tokens: 4, emoji: '🚫', label: 'Niente birra per 13 giorni su 14', target: 13 },
+    { category: 'no_drink', tokens: 1, emoji: '🚫', label: 'Niente alcol per 6 giorni su 14', target: 6 },
+    { category: 'no_drink', tokens: 2, emoji: '🚫', label: 'Niente alcol per 8 giorni su 14', target: 8 },
+    { category: 'no_drink', tokens: 3, emoji: '🚫', label: 'Niente alcol per 10 giorni su 14', target: 10 },
+    { category: 'no_drink', tokens: 4, emoji: '🚫', label: 'Niente alcol per 13 giorni su 14', target: 13 },
   ],
   mentality: [
     { category: 'mentality', tokens: 1, emoji: '🧠', label: "Aprite l'app per 9 giorni su 14", target: 9 },
@@ -122,10 +123,18 @@ function generateMissions(pool: Record<MissionCategory, MissionDef[]>, seed: str
   const nonCorsa: MissionCategory[] = ['attivita', 'camminata', 'no_drink', 'mentality'];
   const catsFor = (t: number) => nonCorsa.filter(cat => pool[cat].some(m => m.tokens === t));
 
+  const INCOMPATIBLE = new Set(['no_drink', 'mentality']);
+
   const cats2 = catsFor(t2);
   const cat2 = pick(cats2, rand);
-  const cats3 = catsFor(t3).filter(c => c !== cat2);
-  const cat3 = pick(cats3, rand);
+  const cats3 = catsFor(t3).filter(c => {
+    if (c === cat2) return false;
+    // no_drink e mentality non possono coesistere
+    if (INCOMPATIBLE.has(c) && INCOMPATIBLE.has(cat2)) return false;
+    return true;
+  });
+  const cat3 = cats3.length > 0 ? pick(cats3, rand) : pick(catsFor(t3).filter(c => c !== cat2), rand);
+
 
   return [
     corsa,
@@ -140,6 +149,22 @@ export function getTandemWeekMissions(weekStart: string): MissionDef[] {
 
 export function getClanMonthMissions(monthStart: string): MissionDef[] {
   return generateMissions(CLAN_POOL, 'clan_' + monthStart);
+}
+
+// ─── INJURY HELPERS ──────────────────────────────────────────────────────────
+
+function calcInjuryDays(
+  injuryMode: boolean,
+  injurySince: string | null,
+  periodStart: string,
+  totalDays: number,
+): number {
+  if (!injuryMode || !injurySince) return 0;
+  const since = new Date(injurySince);
+  const start = new Date(periodStart);
+  const effectiveStart = since > start ? since : start;
+  const days = Math.floor((Date.now() - effectiveStart.getTime()) / 86400000);
+  return Math.max(0, Math.min(days, totalDays));
 }
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
@@ -168,49 +193,152 @@ export async function calcTandemProgress(
 
   const from = weekStart;
   const to = weekEnd + 'T23:59:59';
+  const N = memberIds.length;
+
+  // Injury: riduci il target proporzionalmente ai giorni di infortunio di ciascun membro
+  const { data: injuryData } = await supabase.from('profiles').select('id, injury_mode, injury_since').in('id', memberIds);
+  const injuryAdj = (perPersonTarget: number) =>
+    (injuryData ?? []).reduce((sum, m) => {
+      const days = calcInjuryDays(m.injury_mode, m.injury_since, weekStart, 7);
+      return sum + perPersonTarget * (days / 7);
+    }, 0);
 
   switch (mission.category) {
     case 'corsa': {
-      const { data } = await supabase.from('logs').select('km').in('user_id', memberIds).eq('item_id', 'corsa').gte('created_at', from).lte('created_at', to);
-      const val = Math.round(((data ?? []).reduce((s, l) => s + (l.km ?? 0), 0)) * 10) / 10;
-      return { value: val, pct: Math.min(val / mission.target, 1), displayValue: `${val} / ${mission.target} km`, completed: val >= mission.target };
+      const adj = Math.max(0.1, Math.round((mission.target - injuryAdj(mission.target / N)) * 10) / 10);
+      const { data } = await supabase.from('logs').select('user_id, km').in('user_id', memberIds).eq('item_id', 'corsa').gte('activity_date', from.slice(0, 10)).lte('activity_date', to.slice(0, 10));
+      const perUser: Record<string, number> = {};
+      memberIds.forEach(id => { perUser[id] = 0; });
+      (data ?? []).forEach((l: any) => { perUser[l.user_id] = (perUser[l.user_id] ?? 0) + (l.km ?? 0); });
+      const val = Math.round((Object.values(perUser).reduce((s, v) => s + v, 0)) * 10) / 10;
+      const memberValues = memberIds.map(id => ({ id, value: Math.round(perUser[id] * 10) / 10 }));
+      return { value: val, pct: Math.min(val / adj, 1), displayValue: `${val} / ${adj} km`, completed: val >= adj, memberValues };
     }
     case 'attivita': {
-      const { data } = await supabase.from('logs').select('duration_minutes').in('user_id', memberIds).eq('type', 'workout').gte('created_at', from).lte('created_at', to);
-      const mins = (data ?? []).reduce((s, l) => s + (l.duration_minutes ?? 0), 0);
-      return { value: mins, pct: Math.min(mins / mission.target, 1), displayValue: fmtMins(mins, mission.target / 60), completed: mins >= mission.target };
+      const adj = Math.max(1, Math.round(mission.target - injuryAdj(mission.target / N)));
+      const { data } = await supabase.from('logs').select('user_id, duration_minutes').in('user_id', memberIds).eq('type', 'workout').neq('item_id', 'corsa').neq('item_id', 'camminata').neq('item_id', 'mentality').gte('activity_date', from.slice(0, 10)).lte('activity_date', to.slice(0, 10));
+      const perUser: Record<string, number> = {};
+      memberIds.forEach(id => { perUser[id] = 0; });
+      (data ?? []).forEach((l: any) => { perUser[l.user_id] = (perUser[l.user_id] ?? 0) + (l.duration_minutes ?? 0); });
+      const mins = Object.values(perUser).reduce((s, v) => s + v, 0);
+      const memberValues = memberIds.map(id => ({ id, value: perUser[id] }));
+      return { value: mins, pct: Math.min(mins / adj, 1), displayValue: fmtMins(mins, adj / 60), completed: mins >= adj, memberValues };
     }
     case 'camminata': {
-      const { data } = await supabase.from('logs').select('km, elevation_meters').in('user_id', memberIds).eq('item_id', 'camminata').gte('created_at', from).lte('created_at', to);
-      const kmSum = Math.round(((data ?? []).reduce((s, l) => s + (l.km ?? 0), 0)) * 10) / 10;
-      const elevSum = Math.round((data ?? []).reduce((s, l) => s + (l.elevation_meters ?? 0), 0));
-      const tKm = mission.targetKm ?? mission.target;
-      const tElev = mission.targetElevation ?? 9999;
+      const tKm = Math.max(0.1, Math.round((mission.targetKm ?? mission.target - injuryAdj((mission.targetKm ?? mission.target) / N)) * 10) / 10);
+      const tElev = Math.max(1, Math.round((mission.targetElevation ?? 9999) - injuryAdj((mission.targetElevation ?? 9999) / N)));
+      const { data } = await supabase.from('logs').select('user_id, km, elevation_meters').in('user_id', memberIds).eq('item_id', 'camminata').gte('activity_date', from.slice(0, 10)).lte('activity_date', to.slice(0, 10));
+      const perUser: Record<string, number> = {};
+      memberIds.forEach(id => { perUser[id] = 0; });
+      (data ?? []).forEach((l: any) => { perUser[l.user_id] = (perUser[l.user_id] ?? 0) + (l.km ?? 0); });
+      const kmSum = Math.round((Object.values(perUser).reduce((s, v) => s + v, 0)) * 10) / 10;
+      const elevSum = Math.round((data ?? []).reduce((s: number, l: any) => s + (l.elevation_meters ?? 0), 0));
       const pct = Math.min(Math.max(kmSum / tKm, elevSum / tElev), 1);
-      return { value: kmSum, pct, displayValue: `${kmSum} km  |  ${elevSum} m D+`, completed: kmSum >= tKm || elevSum >= tElev };
+      const memberValues = memberIds.map(id => ({ id, value: Math.round(perUser[id] * 10) / 10 }));
+      return { value: kmSum, pct, displayValue: `${kmSum} km  |  ${elevSum} m D+`, completed: kmSum >= tKm || elevSum >= tElev, memberValues };
     }
     case 'no_drink': {
       const end = clampEnd(weekEnd);
       const days = eachDayOfInterval({ start: new Date(weekStart), end });
-      const { data } = await supabase.from('logs').select('user_id, created_at').in('user_id', memberIds).eq('type', 'drink').gte('created_at', from).lte('created_at', to);
+      const { data } = await supabase.from('logs').select('user_id, activity_date, created_at').in('user_id', memberIds).eq('type', 'drink').gte('activity_date', from.slice(0, 10)).lte('activity_date', to.slice(0, 10));
       const drinkDaysByUser: Record<string, Set<string>> = {};
       memberIds.forEach(id => { drinkDaysByUser[id] = new Set(); });
-      (data ?? []).forEach((l: any) => drinkDaysByUser[l.user_id]?.add(l.created_at.slice(0, 10)));
+      (data ?? []).forEach((l: any) => drinkDaysByUser[l.user_id]?.add(l.activity_date ?? l.created_at.slice(0, 10)));
+      const perUser: Record<string, number> = {};
       let clean = 0;
-      for (const uid of memberIds) clean += days.filter(d => !drinkDaysByUser[uid].has(format(d, 'yyyy-MM-dd'))).length;
+      for (const uid of memberIds) {
+        const v = days.filter(d => !drinkDaysByUser[uid].has(format(d, 'yyyy-MM-dd'))).length;
+        perUser[uid] = v;
+        clean += v;
+      }
       const total = days.length * memberIds.length;
-      return { value: clean, pct: Math.min(clean / mission.target, 1), displayValue: `${clean} / ${mission.target} giorni (su ${total} totali)`, completed: clean >= mission.target };
+      const memberValues = memberIds.map(id => ({ id, value: perUser[id] }));
+      return { value: clean, pct: Math.min(clean / mission.target, 1), displayValue: `${clean} / ${mission.target} giorni (su ${total} totali)`, completed: clean >= mission.target, memberValues };
     }
     case 'mentality': {
       const end = clampEnd(weekEnd);
       const days = eachDayOfInterval({ start: new Date(weekStart), end });
-      const { data } = await supabase.from('logs').select('user_id, created_at').in('user_id', memberIds).eq('type', 'mentality').gte('created_at', from).lte('created_at', to);
-      const seen = new Set((data ?? []).map((l: any) => `${l.user_id}_${l.created_at.slice(0, 10)}`));
-      const val = seen.size;
+      const { data } = await supabase.from('logs').select('user_id, activity_date, created_at').in('user_id', memberIds).eq('item_id', 'mentality').gte('activity_date', from.slice(0, 10)).lte('activity_date', to.slice(0, 10));
+      const seenKeys = new Set<string>();
+      const perUser: Record<string, number> = {};
+      memberIds.forEach(id => { perUser[id] = 0; });
+      (data ?? []).forEach((l: any) => {
+        const key = `${l.user_id}_${l.activity_date ?? l.created_at.slice(0, 10)}`;
+        if (!seenKeys.has(key)) { seenKeys.add(key); perUser[l.user_id] = (perUser[l.user_id] ?? 0) + 1; }
+      });
+      const val = seenKeys.size;
       const total = days.length * memberIds.length;
-      return { value: val, pct: Math.min(val / mission.target, 1), displayValue: `${val} / ${mission.target} giorni (su ${total} totali)`, completed: val >= mission.target };
+      const memberValues = memberIds.map(id => ({ id, value: perUser[id] }));
+      return { value: val, pct: Math.min(val / mission.target, 1), displayValue: `${val} / ${mission.target} giorni (su ${total} totali)`, completed: val >= mission.target, memberValues };
     }
   }
+}
+
+// ─── CLAIM FUNCTIONS ─────────────────────────────────────────────────────────
+
+/** Ritorna il weekStart (lunedì) della settimana PRECEDENTE in formato yyyy-MM-dd */
+export function getPrevWeekStart(): string {
+  const now = new Date();
+  const dayOfWeek = now.getDay(); // 0=dom, 1=lun, ...
+  const daysToLastMonday = dayOfWeek === 0 ? 13 : dayOfWeek + 6;
+  const lastMonday = new Date(now.getTime() - daysToLastMonday * 86400000);
+  return format(lastMonday, 'yyyy-MM-dd');
+}
+export function getPrevWeekEnd(): string {
+  const prevStart = getPrevWeekStart();
+  const prevMonday = new Date(prevStart);
+  const sunday = new Date(prevMonday.getTime() + 6 * 86400000);
+  return format(sunday, 'yyyy-MM-dd');
+}
+
+/** Ritorna il primo giorno del mese PRECEDENTE in formato yyyy-MM-dd */
+export function getPrevMonthStart(): string {
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  return format(d, 'yyyy-MM-dd');
+}
+export function getPrevMonthEnd(): string {
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth(), 0); // ultimo giorno del mese scorso
+  return format(d, 'yyyy-MM-dd');
+}
+
+/** Può claimare tandem? Solo se prevWeek != tandem_claimed_week */
+export async function getTandemClaimState(userId: string): Promise<{ claimedWeek: string | null }> {
+  const { data } = await supabase.from('profiles').select('tandem_claimed_week').eq('id', userId).single();
+  return { claimedWeek: data?.tandem_claimed_week ?? null };
+}
+
+export async function getClanClaimState(userId: string): Promise<{ claimedMonth: string | null }> {
+  const { data } = await supabase.from('profiles').select('clan_claimed_month').eq('id', userId).single();
+  return { claimedMonth: data?.clan_claimed_month ?? null };
+}
+
+/** Claim tandem: aggiorna tandem_claimed_week e aggiunge tokens */
+export async function claimTandemMissions(userId: string, weekStart: string, tokens: number, missionCount: number = 1): Promise<boolean> {
+  const { data } = await supabase.from('profiles').select('tokens, tandem_claimed_week, tandem_missions_done').eq('id', userId).single();
+  if (!data) return false;
+  if (data.tandem_claimed_week === weekStart) return false; // già riscosso
+  await supabase.from('profiles').update({
+    tandem_claimed_week: weekStart,
+    tokens: (data.tokens ?? 0) + tokens,
+    tandem_missions_done: (data.tandem_missions_done ?? 0) + missionCount,
+  }).eq('id', userId);
+  return true;
+}
+
+/** Claim clan: aggiorna clan_claimed_month e aggiunge tokens */
+export async function claimClanMissions(userId: string, monthStart: string, tokens: number): Promise<boolean> {
+  const { data } = await supabase.from('profiles').select('tokens, clan_claimed_month').eq('id', userId).single();
+  if (!data) return false;
+  if (data.clan_claimed_month === monthStart) return false; // già riscosso
+  const { data: cur2 } = await supabase.from('profiles').select('clan_missions_done').eq('id', userId).single().then(r => r, () => ({ data: null }));
+  await supabase.from('profiles').update({
+    clan_claimed_month: monthStart,
+    tokens: (data.tokens ?? 0) + tokens,
+    clan_missions_done: ((cur2 as any)?.clan_missions_done ?? 0) + 1,
+  }).eq('id', userId);
+  return true;
 }
 
 // ─── CLAN PROGRESS ───────────────────────────────────────────────────────────
@@ -227,49 +355,82 @@ export async function calcClanProgress(
   const from = monthStart;
   const to = monthEnd + 'T23:59:59';
 
+  const daysInMonth = eachDayOfInterval({ start: new Date(monthStart), end: new Date(monthEnd) }).length;
+  const { data: injuryData } = await supabase.from('profiles').select('id, injury_mode, injury_since').in('id', memberIds);
+  const injuryAdj = (perPersonTarget: number) =>
+    (injuryData ?? []).reduce((sum, m) => {
+      const days = calcInjuryDays(m.injury_mode, m.injury_since, monthStart, daysInMonth);
+      return sum + perPersonTarget * (days / daysInMonth);
+    }, 0);
+
   switch (mission.category) {
     case 'corsa': {
-      const total = mission.target * n;
-      const { data } = await supabase.from('logs').select('km').in('user_id', memberIds).eq('item_id', 'corsa').gte('created_at', from).lte('created_at', to);
-      const val = Math.round(((data ?? []).reduce((s, l) => s + (l.km ?? 0), 0)) * 10) / 10;
-      return { value: val, pct: Math.min(val / total, 1), displayValue: `${val} / ${total} km`, completed: val >= total };
+      const total = Math.max(n * 0.1, Math.round((mission.target * n - injuryAdj(mission.target)) * 10) / 10);
+      const { data } = await supabase.from('logs').select('user_id, km').in('user_id', memberIds).eq('item_id', 'corsa').gte('activity_date', from.slice(0, 10)).lte('activity_date', to.slice(0, 10));
+      const perUser: Record<string, number> = {};
+      memberIds.forEach(id => { perUser[id] = 0; });
+      (data ?? []).forEach((l: any) => { perUser[l.user_id] = (perUser[l.user_id] ?? 0) + (l.km ?? 0); });
+      const val = Math.round((Object.values(perUser).reduce((s, v) => s + v, 0)) * 10) / 10;
+      const memberValues = memberIds.map(id => ({ id, value: Math.round(perUser[id] * 10) / 10 }));
+      return { value: val, pct: Math.min(val / total, 1), displayValue: `${val} / ${total} km`, completed: val >= total, memberValues };
     }
     case 'attivita': {
-      const total = mission.target * n;
-      const { data } = await supabase.from('logs').select('duration_minutes').in('user_id', memberIds).eq('type', 'workout').gte('created_at', from).lte('created_at', to);
-      const mins = (data ?? []).reduce((s, l) => s + (l.duration_minutes ?? 0), 0);
-      return { value: mins, pct: Math.min(mins / total, 1), displayValue: fmtMins(mins, total / 60), completed: mins >= total };
+      const total = Math.max(n, Math.round(mission.target * n - injuryAdj(mission.target)));
+      const { data } = await supabase.from('logs').select('user_id, duration_minutes').in('user_id', memberIds).eq('type', 'workout').neq('item_id', 'corsa').neq('item_id', 'camminata').neq('item_id', 'mentality').gte('activity_date', from.slice(0, 10)).lte('activity_date', to.slice(0, 10));
+      const perUser: Record<string, number> = {};
+      memberIds.forEach(id => { perUser[id] = 0; });
+      (data ?? []).forEach((l: any) => { perUser[l.user_id] = (perUser[l.user_id] ?? 0) + (l.duration_minutes ?? 0); });
+      const mins = Object.values(perUser).reduce((s, v) => s + v, 0);
+      const memberValues = memberIds.map(id => ({ id, value: perUser[id] }));
+      return { value: mins, pct: Math.min(mins / total, 1), displayValue: fmtMins(mins, total / 60), completed: mins >= total, memberValues };
     }
     case 'camminata': {
-      const tKm = (mission.targetKm ?? mission.target) * n;
-      const tElev = (mission.targetElevation ?? 9999) * n;
-      const { data } = await supabase.from('logs').select('km, elevation_meters').in('user_id', memberIds).eq('item_id', 'camminata').gte('created_at', from).lte('created_at', to);
-      const kmSum = Math.round(((data ?? []).reduce((s, l) => s + (l.km ?? 0), 0)) * 10) / 10;
-      const elevSum = Math.round((data ?? []).reduce((s, l) => s + (l.elevation_meters ?? 0), 0));
+      const tKm = Math.max(n * 0.1, Math.round(((mission.targetKm ?? mission.target) * n - injuryAdj(mission.targetKm ?? mission.target)) * 10) / 10);
+      const tElev = Math.max(n, Math.round((mission.targetElevation ?? 9999) * n - injuryAdj(mission.targetElevation ?? 9999)));
+      const { data } = await supabase.from('logs').select('user_id, km, elevation_meters').in('user_id', memberIds).eq('item_id', 'camminata').gte('activity_date', from.slice(0, 10)).lte('activity_date', to.slice(0, 10));
+      const perUser: Record<string, number> = {};
+      memberIds.forEach(id => { perUser[id] = 0; });
+      (data ?? []).forEach((l: any) => { perUser[l.user_id] = (perUser[l.user_id] ?? 0) + (l.km ?? 0); });
+      const kmSum = Math.round((Object.values(perUser).reduce((s, v) => s + v, 0)) * 10) / 10;
+      const elevSum = Math.round((data ?? []).reduce((s: number, l: any) => s + (l.elevation_meters ?? 0), 0));
       const pct = Math.min(Math.max(kmSum / tKm, elevSum / tElev), 1);
-      return { value: kmSum, pct, displayValue: `${kmSum} km  |  ${elevSum} m D+`, completed: kmSum >= tKm || elevSum >= tElev };
+      const memberValues = memberIds.map(id => ({ id, value: Math.round(perUser[id] * 10) / 10 }));
+      return { value: kmSum, pct, displayValue: `${kmSum} km  |  ${elevSum} m D+`, completed: kmSum >= tKm || elevSum >= tElev, memberValues };
     }
     case 'no_drink': {
       const end = clampEnd(monthEnd);
       const days = eachDayOfInterval({ start: new Date(monthStart), end });
       const total = mission.target * n;
-      const { data } = await supabase.from('logs').select('user_id, created_at').in('user_id', memberIds).eq('type', 'drink').gte('created_at', from).lte('created_at', to);
+      const { data } = await supabase.from('logs').select('user_id, activity_date, created_at').in('user_id', memberIds).eq('type', 'drink').gte('activity_date', from.slice(0, 10)).lte('activity_date', to.slice(0, 10));
       const drinkDaysByUser: Record<string, Set<string>> = {};
       memberIds.forEach(id => { drinkDaysByUser[id] = new Set(); });
-      (data ?? []).forEach((l: any) => drinkDaysByUser[l.user_id]?.add(l.created_at.slice(0, 10)));
+      (data ?? []).forEach((l: any) => drinkDaysByUser[l.user_id]?.add(l.activity_date ?? l.created_at.slice(0, 10)));
+      const perUser: Record<string, number> = {};
       let clean = 0;
-      for (const uid of memberIds) clean += days.filter(d => !drinkDaysByUser[uid].has(format(d, 'yyyy-MM-dd'))).length;
-      return { value: clean, pct: Math.min(clean / total, 1), displayValue: `${clean} / ${total} giorni`, completed: clean >= total };
+      for (const uid of memberIds) {
+        const v = days.filter(d => !drinkDaysByUser[uid].has(format(d, 'yyyy-MM-dd'))).length;
+        perUser[uid] = v;
+        clean += v;
+      }
+      const memberValues = memberIds.map(id => ({ id, value: perUser[id] }));
+      return { value: clean, pct: Math.min(clean / total, 1), displayValue: `${clean} / ${total} giorni`, completed: clean >= total, memberValues };
     }
     case 'mentality': {
       const end = clampEnd(monthEnd);
       const daysInMonth = eachDayOfInterval({ start: new Date(monthStart), end }).length;
       const fullMonth = eachDayOfInterval({ start: new Date(monthStart), end: new Date(monthEnd) }).length;
       const targetCount = Math.round((mission.target / 100) * n * fullMonth);
-      const { data } = await supabase.from('logs').select('user_id, created_at').in('user_id', memberIds).eq('type', 'mentality').gte('created_at', from).lte('created_at', to);
-      const seen = new Set((data ?? []).map((l: any) => `${l.user_id}_${l.created_at.slice(0, 10)}`));
-      const val = seen.size;
-      return { value: val, pct: Math.min(val / targetCount, 1), displayValue: `${val} / ${targetCount} (${mission.target}% di ${n}×${daysInMonth}gg)`, completed: val >= targetCount };
+      const { data } = await supabase.from('logs').select('user_id, activity_date, created_at').in('user_id', memberIds).eq('item_id', 'mentality').gte('activity_date', from.slice(0, 10)).lte('activity_date', to.slice(0, 10));
+      const seenKeys = new Set<string>();
+      const perUser: Record<string, number> = {};
+      memberIds.forEach(id => { perUser[id] = 0; });
+      (data ?? []).forEach((l: any) => {
+        const key = `${l.user_id}_${l.activity_date ?? l.created_at.slice(0, 10)}`;
+        if (!seenKeys.has(key)) { seenKeys.add(key); perUser[l.user_id] = (perUser[l.user_id] ?? 0) + 1; }
+      });
+      const val = seenKeys.size;
+      const memberValues = memberIds.map(id => ({ id, value: perUser[id] }));
+      return { value: val, pct: Math.min(val / targetCount, 1), displayValue: `${val} / ${targetCount} (${mission.target}% di ${n}×${daysInMonth}gg)`, completed: val >= targetCount, memberValues };
     }
   }
 }

@@ -1,238 +1,158 @@
-import React from 'react';
-import { ScrollView, View, Text, StyleSheet } from 'react-native';
+import React, { useMemo } from 'react';
+import { ScrollView, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useTheme } from '@/context/ThemeContext';
+import type { ThemeColors } from '@/constants/Colors';
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Block({ emoji, title, desc, styles }: { emoji: string; title: string; desc: string; styles: ReturnType<typeof makeStyles> }) {
   return (
-    <View style={styles.section}>
-      <Text style={styles.sectionTitle}>{title}</Text>
-      {children}
-    </View>
-  );
-}
-
-function Rule({ emoji, title, desc }: { emoji: string; title: string; desc: string }) {
-  return (
-    <View style={styles.rule}>
-      <Text style={styles.ruleEmoji}>{emoji}</Text>
-      <View style={{ flex: 1 }}>
-        <Text style={styles.ruleTitle}>{title}</Text>
-        <Text style={styles.ruleDesc}>{desc}</Text>
-      </View>
-    </View>
-  );
-}
-
-function ScoreRow({ label, value, color }: { label: string; value: string; color: string }) {
-  return (
-    <View style={styles.scoreRow}>
-      <Text style={styles.scoreLabel}>{label}</Text>
-      <Text style={[styles.scoreValue, { color }]}>{value}</Text>
+    <View style={styles.block}>
+      <Text style={styles.blockEmoji}>{emoji}</Text>
+      <Text style={styles.blockTitle}>{title}</Text>
+      <Text style={styles.blockDesc}>{desc}</Text>
     </View>
   );
 }
 
 export default function RegoleScreen() {
+  const params = useLocalSearchParams<{ onboarding?: string }>();
+  const router = useRouter();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+  const isOnboarding = params.onboarding === '1';
+
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
 
-      {/* Intro */}
-      <View style={styles.heroCard}>
+      <View style={styles.hero}>
         <Text style={styles.heroEmoji}>🐷🍺🏃</Text>
         <Text style={styles.heroTitle}>Corri Birresponsabilmente</Text>
-        <Text style={styles.heroSub}>
-          L'obiettivo è semplice: bevi meno di quanto corri. Tieni il saldo cuori positivo e dimostra agli amici che sei un maialino equilibrato.
-        </Text>
+        <Text style={styles.heroSub}>L'obiettivo è semplice: allenarti più di quanto bevi. Tieni i cuori in positivo.</Text>
       </View>
 
-      {/* I Cuori */}
-      <Section title="❤️ Il sistema dei cuori">
-        <Text style={styles.bodyText}>
-          Ogni azione influenza il tuo saldo cuori. Più alto è il saldo, meglio stai (sportivamente parlando).
-        </Text>
-
-        <View style={styles.tableCard}>
-          <Text style={styles.tableHeader}>🍺 Drink — cuori persi</Text>
-          <ScoreRow label="Birra piccola" value="-1 ❤️" color="#E8445A" />
-          <ScoreRow label="Birra media" value="-1 ❤️" color="#E8445A" />
-          <ScoreRow label="Calice di vino" value="-1 ❤️" color="#E8445A" />
-          <ScoreRow label="Amaro" value="-1 ❤️" color="#E8445A" />
-          <ScoreRow label="Cocktail" value="-2 ❤️" color="#E8445A" />
-          <ScoreRow label="Bottiglia di vino" value="-6 ❤️ ÷ persone" color="#E8445A" />
-        </View>
-
-        <View style={[styles.tableCard, { marginTop: 10 }]}>
-          <Text style={styles.tableHeader}>🏃 Sport — cuori guadagnati</Text>
-          <ScoreRow label="Corsa 10km" value="+6 ❤️" color="#2196F3" />
-          <ScoreRow label="Camminata 10km" value="~+3 ❤️" color="#2196F3" />
-          <ScoreRow label="HIIT 1h" value="+5 ❤️" color="#2196F3" />
-          <ScoreRow label="Pilates 1h" value="+3 ❤️" color="#2196F3" />
-          <ScoreRow label="Tennis/Padel 1h" value="+4 ❤️" color="#2196F3" />
-          <ScoreRow label="Palestra 1h" value="+4 ❤️" color="#2196F3" />
-          <Text style={styles.tableNote}>* i cuori dipendono dalle calorie bruciate</Text>
-        </View>
-      </Section>
-
-      {/* Clan */}
-      <Section title="🏆 Clan">
-        <Rule
-          emoji="👥"
-          title="Cos'è un clan"
-          desc="Un gruppo di amici che competono insieme. Il punteggio del clan è la somma dei cuori di tutti i membri."
-        />
-        <Rule
-          emoji="🔑"
-          title="Entra nel clan"
-          desc="Il capo clan condivide un codice di 6 lettere. Inseriscilo nel tab Clan per unirti."
-        />
-        <Rule
-          emoji="⚔️"
-          title="Sfida mensile"
-          desc="Il capo clan può sfidare un altro clan. La sfida dura un mese e vince chi guadagna più cuori nel periodo."
-        />
-      </Section>
-
-      {/* Tandem */}
-      <Section title="👥 Tandem">
-        <Rule
-          emoji="🤝"
-          title="Cos'è un tandem"
-          desc="Una coppia di giocatori (o trio se il numero è dispari). Indipendente dal clan — puoi essere in entrambi."
-        />
-        <Rule
-          emoji="🔍"
-          title="Crea un tandem"
-          desc="Cerca il tuo partner per username nel tab Tandem. Una volta creato, il tandem è fisso."
-        />
-        <Rule
-          emoji="📅"
-          title="Sfida settimanale"
-          desc="Ogni settimana il tuo tandem viene abbinato casualmente ad un altro. Vince chi guadagna più cuori da lunedì a domenica."
-        />
-      </Section>
-
-      {/* Classifiche */}
-      <Section title="📊 Classifiche">
-        <Rule
-          emoji="🥇"
-          title="Tre periodi"
-          desc="Le classifiche mostrano i punteggi della settimana corrente, del mese corrente, o di sempre (assoluta)."
-        />
-        <Rule
-          emoji="👤"
-          title="Tre categorie"
-          desc="Singoli (punteggio personale), Tandem (somma della coppia), Clan (somma del gruppo)."
-        />
-        <Rule
-          emoji="⚡️"
-          title="Punteggio sfide"
-          desc="Le sfide si basano sul saldo netto del periodo: cuori guadagnati con lo sport MENO cuori persi con i drink."
-        />
-      </Section>
-
-      {/* Notifiche */}
-      <Section title="🔔 Notifiche">
-        <Rule
-          emoji="📊"
-          title="Recap settimanale"
-          desc="Ogni lunedì ricevi un riassunto della settimana: drink, cuori guadagnati e persi, leader del clan."
-        />
-        <Rule
-          emoji="🏆"
-          title="Sorpasso in classifica"
-          desc="Ricevi una notifica quando qualcuno ti supera in classifica. Motivazione garantita!"
-        />
-      </Section>
-
-      {/* Badge */}
-      <Section title="🏅 Badge">
-        <Text style={styles.bodyText}>
-          Sblocca badge completando obiettivi. Trovi i tuoi badge nel profilo — sfida gli amici a sbloccarne di più!
-        </Text>
-        <View style={styles.badgeGrid}>
-          {[
-            { e: '🍺', n: 'Prima Birra' },
-            { e: '👟', n: 'Primo Passo' },
-            { e: '🐷', n: 'Maialino DOC' },
-            { e: '💪', n: 'Atleta' },
-            { e: '🍾', n: 'Party Animal' },
-            { e: '🔥', n: 'In Forma' },
-            { e: '🏔️', n: 'Alpinista' },
-            { e: '⚖️', n: 'In Equilibrio' },
-          ].map((b) => (
-            <View key={b.n} style={styles.badgeItem}>
-              <Text style={styles.badgeEmoji}>{b.e}</Text>
-              <Text style={styles.badgeName}>{b.n}</Text>
-            </View>
-          ))}
-        </View>
-      </Section>
-
-      <View style={styles.footer}>
-        <Text style={styles.footerText}>Buona birresponsabilità! 🐷🍺</Text>
+      {/* CUORI */}
+      <Text style={styles.sectionTitle}>❤️ I Cuori</Text>
+      <View style={styles.infoBox}>
+        <Text style={styles.infoText}>Ogni profilo parte con <Text style={styles.bold}>10 cuori</Text>. Bere li toglie, allenarsi li ridà. Cerca di non andare sotto zero — anche se non c'è una penalità diretta, il saldo negativo si vede nelle classifiche.</Text>
       </View>
+
+      <View style={styles.twoCol}>
+        <View style={[styles.pill, styles.pillRed]}>
+          <Text style={styles.pillHead}>🍺 Bevi → perdi ❤️</Text>
+          <Text style={styles.pillLine}>Birra / Calice / Amaro → -1</Text>
+          <Text style={styles.pillLine}>Cocktail → -2</Text>
+          <Text style={styles.pillLine}>Bottiglia vino → -6 ÷ persone</Text>
+          <Text style={styles.pillLine}>Matrimonio → -15</Text>
+          <Text style={styles.pillLine}>Giornata in barca → -7</Text>
+        </View>
+        <View style={[styles.pill, styles.pillBlue]}>
+          <Text style={styles.pillHead}>🏃 Ti alleni → guadagni ❤️</Text>
+          <Text style={styles.pillLine}>Boxe / Nuoto → +5/h</Text>
+          <Text style={styles.pillLine}>HIIT / Palestra → +4/h</Text>
+          <Text style={styles.pillLine}>Tennis / Padel → +3/h</Text>
+          <Text style={styles.pillLine}>Corsa 10 km → +5</Text>
+          <Text style={styles.pillLine}>Camminata 10 km → ~+3</Text>
+        </View>
+      </View>
+
+      {/* GETTONI */}
+      <Text style={styles.sectionTitle}>🎟 I Gettoni</Text>
+      <View style={styles.infoBox}>
+        <Text style={styles.infoText}>I gettoni si guadagnano completando le <Text style={styles.bold}>missioni</Text>. Si spendono nello <Text style={styles.bold}>shop</Text> per comprare skin e sfondi per il tuo maialino.</Text>
+      </View>
+
+      {/* MISSIONI */}
+      <Text style={styles.sectionTitle}>🎯 Le Missioni</Text>
+      <Block emoji="👤" title="Personali — 100 missioni in sequenza" desc="Hai una lista di 100 missioni da completare in ordine, una alla volta. Ogni missione ha un obiettivo diverso: corsa, camminata, astinenza, mentality, missioni giornaliere… Completarne una sblocca la successiva. Arrivare a 100 è il traguardo personale." styles={styles} />
+      <Block emoji="👥" title="Tandem — ogni 2 settimane" desc="3 obiettivi condivisi col tuo partner. Dovete completarli entrambi per riscuotere i gettoni." styles={styles} />
+      <Block emoji="🏰" title="Clan — ogni mese" desc="3 obiettivi per tutto il gruppo. Valgono fino a 4 🎟 ciascuno e si riscuotono solo se li fa tutto il clan." styles={styles} />
+      <Block emoji="☀️" title="Missioni giornaliere" desc="Ogni giorno puoi riscuotere fino a 3 gettoni: corri, fai attività, e non bere ieri. Resettano a mezzanotte." styles={styles} />
+
+      {/* CLAN & TANDEM */}
+      <Text style={styles.sectionTitle}>🏆 Clan & Tandem</Text>
+      <Block emoji="🏰" title="Il Clan" desc="Il tuo gruppo di amici. Il punteggio clan è la somma dei cuori di tutti. Il capo può sfidare altri clan ogni mese." styles={styles} />
+      <Block emoji="🤝" title="Il Tandem" desc="Una coppia indipendente dal clan. Ogni due settimane le missioni si rinnovano. Il tandem viene abbinato casualmente ad un altro per le sfide." styles={styles} />
+
+      {/* CLASSIFICHE */}
+      <Text style={styles.sectionTitle}>📊 Classifiche</Text>
+      <View style={styles.infoBox}>
+        <Text style={styles.infoText}>Ci sono tre classifiche: <Text style={styles.bold}>singoli</Text>, <Text style={styles.bold}>tandem</Text> e <Text style={styles.bold}>clan</Text>. Il punteggio è il <Text style={styles.bold}>netto</Text>: cuori guadagnati con lo sport meno cuori persi con le bevute. Puoi filtrare per mese o classifica assoluta.</Text>
+      </View>
+
+      {/* MEDAGLIE */}
+      <Text style={styles.sectionTitle}>🏅 Medaglie</Text>
+      <View style={styles.infoBox}>
+        <Text style={styles.infoText}>Si sbloccano automaticamente raggiungendo traguardi (es. 20 drink, 50 allenamenti, 42 km corsi…). Alcune medaglie sbloccano skin esclusive nello shop.</Text>
+      </View>
+
+      {/* INFORTUNIO */}
+      <Text style={styles.sectionTitle}>🩹 Infortunio</Text>
+      <View style={styles.infoBox}>
+        <Text style={styles.infoText}>Se sei infortunato, attiva la modalità dal menu profilo: le missioni sport si adattano ai giorni di stop. Le missioni drink restano invariate. Ricordati di disattivarla quando sei guarito.</Text>
+      </View>
+
+      {isOnboarding ? (
+        <TouchableOpacity style={styles.startBtn} onPress={() => router.replace('/(tabs)')}>
+          <Text style={styles.startBtnText}>Inizia a giocare 🐷</Text>
+        </TouchableOpacity>
+      ) : (
+        <View style={styles.footer}>
+          <Text style={styles.footerText}>Buona birresponsabilità! 🐷🍺</Text>
+        </View>
+      )}
 
     </ScrollView>
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f7f7f7' },
-  content: { padding: 16, paddingBottom: 48 },
+function makeStyles(colors: ThemeColors, isDark: boolean) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.bg },
+    content: { padding: 18, paddingBottom: 48 },
 
-  heroCard: {
-    backgroundColor: '#1a1a1a', borderRadius: 20, padding: 24,
-    alignItems: 'center', marginBottom: 24,
-  },
-  heroEmoji: { fontSize: 40, marginBottom: 10 },
-  heroTitle: { fontSize: 20, fontWeight: '800', color: '#FFD700', marginBottom: 10, textAlign: 'center' },
-  heroSub: { fontSize: 14, color: '#aaa', textAlign: 'center', lineHeight: 22 },
+    hero: {
+      backgroundColor: isDark ? '#1a1a1a' : '#222', borderRadius: 20, padding: 24,
+      alignItems: 'center', marginBottom: 28,
+    },
+    heroEmoji: { fontSize: 38, marginBottom: 8 },
+    heroTitle: { fontSize: 20, fontWeight: '900', color: '#FFD700', marginBottom: 8, textAlign: 'center' },
+    heroSub: { fontSize: 14, color: '#bbb', textAlign: 'center', lineHeight: 22 },
 
-  section: { marginBottom: 24 },
-  sectionTitle: {
-    fontSize: 13, fontWeight: '800', color: '#aaa',
-    letterSpacing: 1, textTransform: 'uppercase', marginBottom: 12,
-  },
+    sectionTitle: {
+      fontSize: 13, fontWeight: '800', color: colors.textFaint,
+      letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10, marginTop: 8,
+    },
 
-  bodyText: { fontSize: 14, color: '#555', lineHeight: 22, marginBottom: 12 },
+    infoBox: {
+      backgroundColor: colors.card, borderRadius: 14, padding: 16, marginBottom: 12,
+    },
+    infoText: { fontSize: 14, color: colors.textDim, lineHeight: 22 },
+    bold: { fontWeight: '800', color: colors.text },
 
-  tableCard: {
-    backgroundColor: '#fff', borderRadius: 14, overflow: 'hidden',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05, shadowRadius: 4, elevation: 2,
-  },
-  tableHeader: {
-    fontSize: 13, fontWeight: '700', color: '#fff',
-    backgroundColor: '#1a1a1a', padding: 12,
-  },
-  scoreRow: {
-    flexDirection: 'row', justifyContent: 'space-between',
-    paddingHorizontal: 14, paddingVertical: 11,
-    borderBottomWidth: 1, borderBottomColor: '#f0f0f0',
-  },
-  scoreLabel: { fontSize: 14, color: '#333' },
-  scoreValue: { fontSize: 14, fontWeight: '700' },
-  tableNote: { fontSize: 12, color: '#aaa', padding: 10, fontStyle: 'italic' },
+    twoCol: { flexDirection: 'row', gap: 10, marginBottom: 12 },
+    pill: { flex: 1, borderRadius: 14, padding: 14 },
+    pillRed: { backgroundColor: isDark ? '#2d1518' : '#FFF0F0', borderWidth: 1, borderColor: isDark ? '#5a2020' : '#FFD0D0' },
+    pillBlue: { backgroundColor: isDark ? '#0d1f33' : '#EFF6FF', borderWidth: 1, borderColor: isDark ? '#1a3a5c' : '#BFDBFE' },
+    pillHead: { fontSize: 12, fontWeight: '800', color: colors.text, marginBottom: 8 },
+    pillLine: { fontSize: 12, color: colors.textDim, lineHeight: 20 },
 
-  rule: {
-    flexDirection: 'row', backgroundColor: '#fff', borderRadius: 14,
-    padding: 14, marginBottom: 8, gap: 12,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04, shadowRadius: 3, elevation: 1,
-  },
-  ruleEmoji: { fontSize: 26, width: 34, textAlign: 'center' },
-  ruleTitle: { fontSize: 14, fontWeight: '700', color: '#1a1a1a', marginBottom: 3 },
-  ruleDesc: { fontSize: 13, color: '#666', lineHeight: 20 },
+    block: {
+      backgroundColor: colors.card, borderRadius: 14, padding: 14, marginBottom: 8,
+      borderLeftWidth: 3, borderLeftColor: '#FFD700',
+    },
+    blockEmoji: { fontSize: 22, marginBottom: 4 },
+    blockTitle: { fontSize: 14, fontWeight: '800', color: colors.text, marginBottom: 4 },
+    blockDesc: { fontSize: 13, color: colors.textDim, lineHeight: 20 },
 
-  badgeGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 8 },
-  badgeItem: {
-    backgroundColor: '#fff', borderRadius: 12, padding: 12,
-    alignItems: 'center', width: '22%',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04, shadowRadius: 2, elevation: 1,
-  },
-  badgeEmoji: { fontSize: 24, marginBottom: 4 },
-  badgeName: { fontSize: 9, color: '#555', textAlign: 'center', fontWeight: '600' },
+    startBtn: {
+      backgroundColor: '#E8445A', borderRadius: 16, padding: 20,
+      alignItems: 'center', marginTop: 16,
+      shadowColor: '#E8445A', shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3, shadowRadius: 8, elevation: 6,
+    },
+    startBtnText: { color: '#fff', fontSize: 18, fontWeight: '800' },
 
-  footer: { alignItems: 'center', paddingTop: 8 },
-  footerText: { fontSize: 16, color: '#aaa' },
-});
+    footer: { alignItems: 'center', paddingTop: 12 },
+    footerText: { fontSize: 15, color: colors.textFaint },
+  });
+}

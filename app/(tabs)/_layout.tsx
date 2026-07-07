@@ -1,12 +1,19 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Tabs, Redirect } from 'expo-router';
 import { Text, Platform, TouchableOpacity, View, StyleSheet, ActivityIndicator, Modal, Alert } from 'react-native';
 import { UserAvatar } from '@/components/UserAvatar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { useAuth, NotifPref } from '@/context/AuthContext';
+import { useAuth } from '@/context/AuthContext';
+import { useTheme, ThemeMode } from '@/context/ThemeContext';
+import type { ThemeColors } from '@/constants/Colors';
 import { useRouter } from 'expo-router';
-import { debugRegisterForPushNotifications } from '@/lib/notifications';
 import { supabase } from '@/lib/supabase';
+
+const THEME_CYCLE: { mode: ThemeMode; label: string; emoji: string }[] = [
+  { mode: 'dark', label: 'Scuro', emoji: '🌑' },
+  { mode: 'light', label: 'Chiaro', emoji: '☀️' },
+  { mode: 'system', label: 'Sistema', emoji: '⚙️' },
+];
 // Rimuovi Alert duplicato se importato due volte
 // Inline type — evita dipendenza da @react-navigation/bottom-tabs
 type BottomTabBarButtonProps = {
@@ -35,42 +42,45 @@ function HomeTabButton(props: BottomTabBarButtonProps) {
   );
 }
 
-const NOTIF_OPTIONS: { value: NotifPref; label: string; desc: string }[] = [
-  { value: 'none', label: 'Silenzio totale', desc: 'Nessuna notifica' },
-  { value: 'important', label: 'Solo importanti', desc: 'Sorpassi in classifica e avvisi chiave' },
-  { value: 'evening_recap', label: 'Recap serale', desc: 'Ogni sera + notifiche importanti' },
-  { value: 'every_activity', label: 'Tutto', desc: 'Sport in tempo reale + recap + importanti' },
-];
-
 function ProfileButton() {
-  const { user, updateNotifPref } = useAuth();
+  const { user } = useAuth();
+  const { mode, setMode, colors, isDark } = useTheme();
+  const menuStyles = useMemo(() => makeMenuStyles(colors, isDark), [colors, isDark]);
   const router = useRouter();
   const [menuOpen, setMenuOpen] = useState(false);
-  const [saving, setSaving] = useState(false);
+  const [tokens, setTokens] = useState<number | null>(null);
+  const [injuryMode, setInjuryMode] = useState(false);
+  const [injurySaving, setInjurySaving] = useState(false);
 
-  async function testNotifiche() {
-    try {
-      const token = await debugRegisterForPushNotifications();
-      // Salva nel DB
-      if (user) {
-        await supabase.from('profiles').update({ push_token: token }).eq('id', user.id);
-      }
-      Alert.alert('✅ Token ottenuto!', `Token salvato:\n${token}`);
-    } catch (e: any) {
-      Alert.alert('❌ Errore notifiche', e?.message ?? String(e));
-    }
+  function cycleTheme() {
+    const idx = THEME_CYCLE.findIndex(t => t.mode === mode);
+    setMode(THEME_CYCLE[(idx + 1) % THEME_CYCLE.length].mode);
   }
+  const currentTheme = THEME_CYCLE.find(t => t.mode === mode) ?? THEME_CYCLE[0];
 
-  async function selectPref(pref: NotifPref) {
-    if (saving || pref === user?.notifPref) return;
-    setSaving(true);
-    try {
-      await updateNotifPref(pref);
-    } catch (e) {
-      // silenzioso: se fallisce, lo stato locale si aggiorna comunque
-    } finally {
-      setSaving(false);
+  useEffect(() => {
+    if (!user) return;
+    supabase.from('profiles').select('tokens, injury_mode').eq('id', user.id).single()
+      .then(({ data }) => { setTokens(data?.tokens ?? 0); setInjuryMode(data?.injury_mode ?? false); });
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (menuOpen && user) {
+      supabase.from('profiles').select('tokens, injury_mode').eq('id', user.id).single()
+        .then(({ data }) => { setTokens(data?.tokens ?? 0); setInjuryMode(data?.injury_mode ?? false); });
     }
+  }, [menuOpen]);
+
+  async function toggleInjury() {
+    if (!user || injurySaving) return;
+    setInjurySaving(true);
+    const next = !injuryMode;
+    await supabase.from('profiles').update({
+      injury_mode: next,
+      injury_since: next ? new Date().toISOString().slice(0, 10) : null,
+    }).eq('id', user.id);
+    setInjuryMode(next);
+    setInjurySaving(false);
   }
 
   return (
@@ -85,7 +95,8 @@ function ProfileButton() {
       <Modal visible={menuOpen} transparent animationType="fade" onRequestClose={() => setMenuOpen(false)}>
         <TouchableOpacity style={menuStyles.overlay} activeOpacity={1} onPress={() => setMenuOpen(false)}>
           <View style={menuStyles.dropdown}>
-            {/* Sezione Profilo */}
+
+            {/* Profilo */}
             <Text style={menuStyles.sectionTitle}>👤 Profilo</Text>
             <TouchableOpacity
               style={menuStyles.profileRow}
@@ -98,33 +109,67 @@ function ProfileButton() {
               </View>
             </TouchableOpacity>
 
+            {/* Gettoni — tap apre lo shop */}
+            <TouchableOpacity
+              style={menuStyles.tokenRow}
+              onPress={() => { setMenuOpen(false); router.push('/shop' as any); }}
+              activeOpacity={0.75}
+            >
+              <Text style={menuStyles.tokenEmoji}>🎟</Text>
+              <Text style={menuStyles.tokenLabel}>La Stalla</Text>
+              <Text style={menuStyles.tokenValue}>{tokens ?? '…'}</Text>
+              <Text style={{ fontSize: 12, color: '#bbb', marginLeft: 4 }}>›</Text>
+            </TouchableOpacity>
+
+            {/* Modalità Infortunio */}
+            <TouchableOpacity style={menuStyles.injuryRow} onPress={toggleInjury} disabled={injurySaving}>
+              <Text style={menuStyles.injuryEmoji}>🩹</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={menuStyles.injuryLabel}>Modalità Infortunio</Text>
+                <Text style={menuStyles.injuryDesc}>{injuryMode ? 'Attiva — target missioni ridotti, primo drink gratuito' : 'Disattiva'}</Text>
+              </View>
+              <View style={[menuStyles.injuryToggle, injuryMode && menuStyles.injuryToggleOn]}>
+                <View style={[menuStyles.injuryKnob, injuryMode && menuStyles.injuryKnobOn]} />
+              </View>
+            </TouchableOpacity>
+
             <View style={menuStyles.divider} />
 
-            {/* Sezione Notifiche */}
-            <Text style={menuStyles.sectionTitle}>🔔 Notifiche</Text>
-            {NOTIF_OPTIONS.map((opt) => {
-              const selected = user?.notifPref === opt.value;
-              return (
-                <TouchableOpacity
-                  key={opt.value}
-                  style={menuStyles.optionRow}
-                  onPress={() => selectPref(opt.value)}
-                  disabled={saving}
-                >
-                  <View style={[menuStyles.radio, selected && menuStyles.radioSelected]}>
-                    {selected && <View style={menuStyles.radioDot} />}
-                  </View>
-                  <View style={{ flex: 1, marginLeft: 10 }}>
-                    <Text style={menuStyles.optionLabel}>{opt.label}</Text>
-                    <Text style={menuStyles.optionDesc}>{opt.desc}</Text>
-                  </View>
-                </TouchableOpacity>
-              );
-            })}
-            <View style={menuStyles.divider} />
-            <TouchableOpacity style={menuStyles.debugRow} onPress={testNotifiche}>
-              <Text style={menuStyles.debugText}>🔔 Ripristina notifiche</Text>
+            {/* Notifiche — apre schermata dedicata */}
+            <TouchableOpacity
+              style={menuStyles.notifRow}
+              onPress={() => { setMenuOpen(false); router.push('/notifiche' as any); }}
+            >
+              <Text style={menuStyles.notifEmoji}>🔔</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={menuStyles.notifLabel}>Notifiche</Text>
+                <Text style={menuStyles.notifDesc}>Storico e preferenze</Text>
+              </View>
+              <Text style={{ fontSize: 12, color: '#bbb', marginLeft: 4 }}>›</Text>
             </TouchableOpacity>
+
+            {/* Tema — tap per ciclare Scuro/Chiaro/Sistema */}
+            <TouchableOpacity style={menuStyles.notifRow} onPress={cycleTheme}>
+              <Text style={menuStyles.notifEmoji}>{currentTheme.emoji}</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={menuStyles.notifLabel}>Tema</Text>
+                <Text style={menuStyles.notifDesc}>{currentTheme.label} — tocca per cambiare</Text>
+              </View>
+            </TouchableOpacity>
+
+            {/* Regole del gioco */}
+            <TouchableOpacity
+              style={menuStyles.notifRow}
+              onPress={() => { setMenuOpen(false); router.push('/regole' as any); }}
+            >
+              <Text style={menuStyles.notifEmoji}>📖</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={menuStyles.notifLabel}>Regole del gioco</Text>
+                <Text style={menuStyles.notifDesc}>Come funziona RunCool</Text>
+              </View>
+              <Text style={{ fontSize: 12, color: '#bbb', marginLeft: 4 }}>›</Text>
+            </TouchableOpacity>
+
           </View>
         </TouchableOpacity>
       </Modal>
@@ -132,70 +177,93 @@ function ProfileButton() {
   );
 }
 
-const menuStyles = StyleSheet.create({
-  overlay: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.3)',
-    alignItems: 'flex-end',
-  },
-  dropdown: {
-    marginTop: Platform.OS === 'ios' ? 96 : 70,
-    marginRight: 12,
-    width: 290,
-    backgroundColor: '#fff',
-    borderRadius: 18,
-    padding: 16,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.18,
-    shadowRadius: 16,
-    elevation: 12,
-  },
-  sectionTitle: {
-    fontSize: 12, fontWeight: '800', color: '#aaa',
-    letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10,
-  },
-  profileRow: {
-    flexDirection: 'row', alignItems: 'center',
-    backgroundColor: '#FFFBEA', borderRadius: 14, padding: 10, marginBottom: 4,
-  },
-  username: { fontSize: 15, fontWeight: '800', color: '#1a1a1a' },
-  viewProfile: { fontSize: 12, color: '#999', marginTop: 2 },
-  divider: { height: 1, backgroundColor: '#eee', marginVertical: 14 },
-  optionRow: {
-    flexDirection: 'row', alignItems: 'flex-start',
-    paddingVertical: 8,
-  },
-  radio: {
-    width: 20, height: 20, borderRadius: 10, marginTop: 1,
-    borderWidth: 2, borderColor: '#ccc',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  radioSelected: { borderColor: '#FFD700' },
-  radioDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#FFD700' },
-  optionLabel: { fontSize: 14, fontWeight: '700', color: '#1a1a1a' },
-  optionDesc: { fontSize: 12, color: '#999', marginTop: 2, lineHeight: 16 },
-  debugRow: { paddingVertical: 10, alignItems: 'center' },
-  debugText: { fontSize: 13, fontWeight: '700', color: '#888' },
-});
+function makeMenuStyles(colors: ThemeColors, isDark: boolean) {
+  return StyleSheet.create({
+    overlay: {
+      flex: 1,
+      backgroundColor: 'rgba(0,0,0,0.3)',
+      alignItems: 'flex-end',
+    },
+    dropdown: {
+      marginTop: Platform.OS === 'ios' ? 96 : 70,
+      marginRight: 12,
+      width: 290,
+      backgroundColor: colors.card,
+      borderRadius: 18,
+      padding: 16,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 6 },
+      shadowOpacity: isDark ? 0 : 0.18,
+      shadowRadius: 16,
+      elevation: isDark ? 0 : 12,
+    },
+    sectionTitle: {
+      fontSize: 12, fontWeight: '800', color: colors.textFaint,
+      letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10,
+    },
+    profileRow: {
+      flexDirection: 'row', alignItems: 'center',
+      backgroundColor: isDark ? '#332a0d' : '#FFFBEA', borderRadius: 14, padding: 10, marginBottom: 4,
+    },
+    username: { fontSize: 15, fontWeight: '800', color: colors.text },
+    viewProfile: { fontSize: 12, color: colors.textFaint, marginTop: 2 },
+    divider: { height: 1, backgroundColor: colors.border, marginVertical: 14 },
+    tokenRow: {
+      flexDirection: 'row', alignItems: 'center',
+      backgroundColor: isDark ? '#332a0d' : '#FFFBEA', borderRadius: 12,
+      paddingHorizontal: 12, paddingVertical: 10, marginTop: 8,
+    },
+    tokenEmoji: { fontSize: 18, marginRight: 8 },
+    tokenLabel: { flex: 1, fontSize: 14, fontWeight: '700', color: colors.text },
+    tokenValue: { fontSize: 20, fontWeight: '900', color: '#b8860b' },
+    notifRow: {
+      flexDirection: 'row', alignItems: 'center',
+      backgroundColor: isDark ? '#16213a' : '#F0F4FF', borderRadius: 12,
+      paddingHorizontal: 12, paddingVertical: 10, marginTop: 8,
+    },
+    notifEmoji: { fontSize: 18, marginRight: 8 },
+    notifLabel: { fontSize: 14, fontWeight: '700', color: colors.text },
+    notifDesc: { fontSize: 11, color: colors.textFaint, marginTop: 1 },
+    injuryRow: {
+      flexDirection: 'row', alignItems: 'center',
+      backgroundColor: isDark ? '#301818' : '#FFF5F5', borderRadius: 12,
+      paddingHorizontal: 12, paddingVertical: 10, marginTop: 8,
+    },
+    injuryEmoji: { fontSize: 18, marginRight: 8 },
+    injuryLabel: { fontSize: 14, fontWeight: '700', color: colors.text },
+    injuryDesc: { fontSize: 11, color: colors.textFaint, marginTop: 1 },
+    injuryToggle: {
+      width: 42, height: 24, borderRadius: 12,
+      backgroundColor: colors.border, justifyContent: 'center', paddingHorizontal: 2,
+    },
+    injuryToggleOn: { backgroundColor: '#FF6B6B' },
+    injuryKnob: {
+      width: 20, height: 20, borderRadius: 10, backgroundColor: '#fff',
+      shadowColor: '#000', shadowOpacity: 0.2, shadowRadius: 2, shadowOffset: { width: 0, height: 1 },
+    },
+    injuryKnobOn: { alignSelf: 'flex-end' },
+  });
+}
 
 export default function TabLayout() {
   const { user, isLoading } = useAuth();
+  const { colors, isDark } = useTheme();
   const insets = useSafeAreaInsets();
 
-  if (isLoading) return <View style={{ flex: 1, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator size="large" color="#FFD700" /></View>;
+  if (isLoading) return <View style={{ flex: 1, backgroundColor: colors.bg, alignItems: 'center', justifyContent: 'center' }}><ActivityIndicator size="large" color="#FFD700" /></View>;
   if (!user) return <Redirect href="/(auth)/login" />;
 
   const tabBarHeight = 60 + insets.bottom;
 
   return (
     <Tabs
+      initialRouteName="index"
       screenOptions={{
         tabBarActiveTintColor: '#E8445A',
-        tabBarInactiveTintColor: '#aaa',
+        tabBarInactiveTintColor: isDark ? '#777' : '#aaa',
         tabBarStyle: {
-          backgroundColor: '#ffffff',
-          borderTopColor: '#dddddd',
+          backgroundColor: colors.card,
+          borderTopColor: colors.border,
           borderTopWidth: 1,
           height: tabBarHeight,
           paddingBottom: insets.bottom + 2,
@@ -203,15 +271,15 @@ export default function TabLayout() {
           elevation: 8,
           shadowColor: '#000',
           shadowOffset: { width: 0, height: -2 },
-          shadowOpacity: 0.1,
+          shadowOpacity: isDark ? 0 : 0.1,
           shadowRadius: 4,
         },
         tabBarLabelStyle: {
           fontSize: 9,
           fontWeight: '600' as const,
         },
-        headerStyle: { backgroundColor: '#fff' },
-        headerTitleStyle: { fontWeight: '700', color: '#1a1a1a' },
+        headerStyle: { backgroundColor: colors.card },
+        headerTitleStyle: { fontWeight: '700', color: colors.text },
         headerShadowVisible: false,
       }}
     >
@@ -221,6 +289,7 @@ export default function TabLayout() {
           title: 'Il Clan',
           tabBarLabel: 'Clan',
           tabBarIcon: () => <TabIcon emoji="🏆" />,
+          headerRight: () => <ProfileButton />,
         }}
       />
       <Tabs.Screen
@@ -229,6 +298,7 @@ export default function TabLayout() {
           title: 'Tandem',
           tabBarLabel: 'Tandem',
           tabBarIcon: () => <TabIcon emoji="👥" />,
+          headerRight: () => <ProfileButton />,
         }}
       />
       <Tabs.Screen
@@ -246,6 +316,7 @@ export default function TabLayout() {
           title: 'Social',
           tabBarLabel: 'Social',
           tabBarIcon: () => <TabIcon emoji="💬" />,
+          headerRight: () => <ProfileButton />,
         }}
       />
       <Tabs.Screen
@@ -254,6 +325,7 @@ export default function TabLayout() {
           title: 'Classifiche',
           tabBarLabel: 'Classifiche',
           tabBarIcon: () => <TabIcon emoji="📊" />,
+          headerRight: () => <ProfileButton />,
         }}
       />
       {/* Schermate nascoste */}

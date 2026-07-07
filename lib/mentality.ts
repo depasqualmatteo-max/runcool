@@ -40,13 +40,14 @@ export async function checkAndAwardMentality(userId?: string): Promise<{
   if (userId) {
     supabase.from('logs').insert({
       user_id: userId,
-      type: 'mentality',
+      type: 'workout',
       item_id: 'mentality',
       item_name: 'Mentality',
       quantity: 1,
       calories: 0,
-      hearts_delta: 0.25,
-    }).then(() => {}).catch(() => {});
+      hearts_delta: 0,
+      activity_date: today,
+    }).then(() => {}, () => {});
   }
 
   return { awarded: true, newQuarters: fullHeart ? 0 : next, fullHeart };

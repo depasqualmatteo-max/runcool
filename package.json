@@ -9,8 +9,10 @@
     "web": "expo start --web"
   },
   "dependencies": {
+    "@google/generative-ai": "^0.24.1",
     "@kingstinct/react-native-healthkit": "^13.4.0",
     "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-community/datetimepicker": "8.6.0",
     "@react-navigation/native": "^7.0.14",
     "@supabase/supabase-js": "^2.100.0",
     "date-fns": "^3.6.0",
@@ -44,6 +46,7 @@
   },
   "devDependencies": {
     "@types/react": "~19.2.10",
+    "jimp": "^1.6.1",
     "typescript": "~5.9.2"
   },
   "private": true

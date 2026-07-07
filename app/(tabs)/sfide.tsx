@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, ScrollView,
   ActivityIndicator, RefreshControl, Alert,
@@ -6,6 +6,8 @@ import {
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/context/AuthContext';
 import { startOfWeek, endOfWeek, startOfMonth, endOfMonth, format } from 'date-fns';
+import { useTheme } from '@/context/ThemeContext';
+import type { ThemeColors } from '@/constants/Colors';
 
 type Period = 'week' | 'month' | 'all';
 type Category = 'singoli' | 'tandem' | 'clan';
@@ -25,6 +27,8 @@ async function fetchPeriodScore(userIds: string[], from: string, to: string): Pr
 
 export default function SfideScreen() {
   const { user } = useAuth();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
   const [period, setPeriod] = useState<Period>('week');
   const [category, setCategory] = useState<Category>('singoli');
   const [rankings, setRankings] = useState<RankEntry[]>([]);
@@ -259,35 +263,37 @@ export default function SfideScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f8f8f8' },
-  section: { padding: 16, paddingBottom: 0 },
-  sectionTitle: { fontSize: 13, fontWeight: '700', color: '#aaa', letterSpacing: 1, textTransform: 'uppercase', marginBottom: 12 },
-  challengeCard: {
-    backgroundColor: '#fff', borderRadius: 16, padding: 18, marginBottom: 12,
-    borderWidth: 2, borderColor: '#FFD700',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.07, shadowRadius: 6, elevation: 3,
-  },
-  challengeLabel: { fontSize: 13, color: '#888', fontWeight: '600', marginBottom: 14 },
-  vsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  vsSide: { flex: 1, alignItems: 'center' },
-  vsName: { fontSize: 14, fontWeight: '700', color: '#1a1a1a', marginBottom: 6, textAlign: 'center' },
-  vsScore: { fontSize: 32, fontWeight: '800' },
-  vsText: { fontSize: 14, fontWeight: '800', color: '#ccc', marginHorizontal: 12 },
-  toggleRow: { flexDirection: 'row', gap: 6, marginBottom: 10 },
-  pill: { flex: 1, paddingVertical: 8, borderRadius: 20, alignItems: 'center', backgroundColor: '#e8e8e8' },
-  pillActive: { backgroundColor: '#FFD700' },
-  pillText: { fontSize: 11, fontWeight: '600', color: '#888' },
-  pillTextActive: { color: '#1a1a1a' },
-  rankRow: {
-    flexDirection: 'row', alignItems: 'center', backgroundColor: '#fff',
-    borderRadius: 12, padding: 14, marginBottom: 8,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.04, shadowRadius: 3, elevation: 1,
-  },
-  rankRowFirst: { borderWidth: 2, borderColor: '#FFD700' },
-  rankRowMe: { backgroundColor: '#FFF8E1' },
-  rankMedal: { fontSize: 18, width: 36 },
-  rankName: { flex: 1, fontSize: 15, fontWeight: '600', color: '#1a1a1a' },
-  rankScore: { fontSize: 15, fontWeight: '700' },
-  empty: { textAlign: 'center', color: '#aaa', marginTop: 32, fontSize: 15, paddingBottom: 20 },
-});
+function makeStyles(colors: ThemeColors, isDark: boolean) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.bg },
+    section: { padding: 16, paddingBottom: 0 },
+    sectionTitle: { fontSize: 13, fontWeight: '700', color: colors.textFaint, letterSpacing: 1, textTransform: 'uppercase', marginBottom: 12 },
+    challengeCard: {
+      backgroundColor: colors.card, borderRadius: 16, padding: 18, marginBottom: 12,
+      borderWidth: 2, borderColor: '#FFD700',
+      shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: isDark ? 0 : 0.07, shadowRadius: 6, elevation: isDark ? 0 : 3,
+    },
+    challengeLabel: { fontSize: 13, color: colors.textDim, fontWeight: '600', marginBottom: 14 },
+    vsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+    vsSide: { flex: 1, alignItems: 'center' },
+    vsName: { fontSize: 14, fontWeight: '700', color: colors.text, marginBottom: 6, textAlign: 'center' },
+    vsScore: { fontSize: 32, fontWeight: '800' },
+    vsText: { fontSize: 14, fontWeight: '800', color: colors.textFaint, marginHorizontal: 12 },
+    toggleRow: { flexDirection: 'row', gap: 6, marginBottom: 10 },
+    pill: { flex: 1, paddingVertical: 8, borderRadius: 20, alignItems: 'center', backgroundColor: colors.bgAlt },
+    pillActive: { backgroundColor: '#FFD700' },
+    pillText: { fontSize: 11, fontWeight: '600', color: colors.textDim },
+    pillTextActive: { color: '#1a1a1a' },
+    rankRow: {
+      flexDirection: 'row', alignItems: 'center', backgroundColor: colors.card,
+      borderRadius: 12, padding: 14, marginBottom: 8,
+      shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: isDark ? 0 : 0.04, shadowRadius: 3, elevation: isDark ? 0 : 1,
+    },
+    rankRowFirst: { borderWidth: 2, borderColor: '#FFD700' },
+    rankRowMe: { backgroundColor: isDark ? '#332a0d' : '#FFF8E1' },
+    rankMedal: { fontSize: 18, width: 36 },
+    rankName: { flex: 1, fontSize: 15, fontWeight: '600', color: colors.text },
+    rankScore: { fontSize: 15, fontWeight: '700' },
+    empty: { textAlign: 'center', color: colors.textFaint, marginTop: 32, fontSize: 15, paddingBottom: 20 },
+  });
+}

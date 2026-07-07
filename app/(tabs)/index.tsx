@@ -1,8 +1,11 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Animated } from 'react-native';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Animated, RefreshControl, Alert } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
+import { useTheme } from '@/context/ThemeContext';
+import type { ThemeColors } from '@/constants/Colors';
 import { supabase } from '@/lib/supabase';
 import { format } from 'date-fns';
 import { it } from 'date-fns/locale';
@@ -11,7 +14,7 @@ import { UserAvatar } from '@/components/UserAvatar';
 import { checkAndAwardMentality } from '@/lib/mentality';
 import {
   getTodayDailyMissions, getDailyProgress, SEQ_MISSIONS, calcSeqProgress,
-  advanceSeqMission, incrementDailyMissionsDone,
+  advanceSeqMission, claimDailyMission, getDailyClaimedMask,
   type DailyProgress, type SeqProgress,
 } from '@/lib/personalMissions';
 
@@ -30,19 +33,27 @@ function getMotivationalPhrase(hearts: number): string {
 
 export default function DashboardScreen() {
   const { state } = useApp();
-  const { user, clan } = useAuth();
+  const { user, clan, refreshClan } = useAuth();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
+  const mStyles = useMemo(() => makeMStyles(colors, isDark), [colors, isDark]);
   const router = useRouter();
   const [tandem, setTandem] = useState<{ name: string; members: { id: string; username: string; hearts: number; avatarUrl: string | null }[] } | null>(null);
 
+  const loadTandem = async (uid: string) => {
+    const { data } = await supabase.from('profiles').select('tandem_id').eq('id', uid).single();
+    if (!data?.tandem_id) return;
+    const [{ data: t }, { data: members }] = await Promise.all([
+      supabase.from('tandems').select('name').eq('id', data.tandem_id).single(),
+      supabase.from('profiles').select('id, username, hearts, avatar_url').eq('tandem_id', data.tandem_id),
+    ]);
+    if (t) setTandem({ name: t.name, members: (members ?? []).map(m => ({ id: m.id, username: m.username, hearts: m.hearts, avatarUrl: m.avatar_url ?? null })) });
+  };
+
   useEffect(() => {
     if (!user) return;
-    supabase.from('profiles').select('tandem_id').eq('id', user.id).single().then(async ({ data }) => {
-      if (!data?.tandem_id) return;
-      const { data: t } = await supabase.from('tandems').select('name').eq('id', data.tandem_id).single();
-      const { data: members } = await supabase.from('profiles').select('id, username, hearts, avatar_url').eq('tandem_id', data.tandem_id);
-      if (t) setTandem({ name: t.name, members: (members ?? []).map(m => ({ id: m.id, username: m.username, hearts: m.hearts, avatarUrl: m.avatar_url ?? null })) });
-    });
-  }, [user]);
+    loadTandem(user.id);
+  }, [user?.id]);
 
   const today = format(new Date(), 'yyyy-MM-dd');
   const todayLogs = state.logs.filter((l) => l.timestamp.startsWith(today));
@@ -58,31 +69,103 @@ export default function DashboardScreen() {
   // ─── Missioni personali ───
   const dailyMissionsDef = getTodayDailyMissions();
   const [dailyProgress, setDailyProgress] = useState<DailyProgress | null>(null);
+  const [claimedMask, setClaimedMask] = useState(0); // bitmask: 1=run, 2=activity, 4=nodrink
   const [currentMission, setCurrentMission] = useState(1);
+  const [missionStartedAt, setMissionStartedAt] = useState<string>(new Date().toISOString());
   const [seqProgress, setSeqProgress] = useState<SeqProgress | null>(null);
   const [seqLoading, setSeqLoading] = useState(true);
+  const [advancingSeq, setAdvancingSeq] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadSeqMission = async (uid: string) => {
+    const { data } = await supabase
+      .from('profiles')
+      .select('current_mission, mission_started_at')
+      .eq('id', uid)
+      .single();
+    const n = data?.current_mission ?? 1;
+    const since = data?.mission_started_at ?? new Date().toISOString();
+    setCurrentMission(n);
+    setMissionStartedAt(since);
+    const mission = SEQ_MISSIONS[n - 1];
+    if (mission) {
+      const p = await calcSeqProgress(mission, uid, since);
+      setSeqProgress(p);
+      setSeqLoading(false);
+    } else {
+      setSeqLoading(false);
+    }
+  };
+
+  const handleAdvanceSeq = async () => {
+    if (!user || advancingSeq) return;
+    setAdvancingSeq(true);
+    await advanceSeqMission(user.id, currentMission);
+    await loadSeqMission(user.id);
+    setAdvancingSeq(false);
+  };
+
+  const handleClaimDaily = async (bit: 1 | 2 | 4) => {
+    if (!user) return;
+    if (bit === 4) {
+      const uid = user.id;
+      Alert.alert(
+        'Conferma no drink 🍺',
+        'Sicuro di non aver bevuto ieri? Se aggiungi alcol retroattivo dopo aver riscosso, i punti non vengono tolti.',
+        [
+          { text: 'Aspetta', style: 'cancel' },
+          { text: 'Sì, riscuoti', onPress: async () => {
+            try {
+              const ok = await claimDailyMission(uid, bit);
+              setClaimedMask(m => m | bit); // aggiorna sempre, sia ok che già riscosso
+              if (!ok) Alert.alert('Già riscosso', 'Hai già riscosso questa missione oggi.');
+            } catch (e: any) {
+              Alert.alert('Errore', e.message);
+            }
+          }},
+        ]
+      );
+      return;
+    }
+    const ok = await claimDailyMission(user.id, bit);
+    if (ok) setClaimedMask(m => m | bit);
+  };
+
+  const refreshAll = async (uid: string) => {
+    await Promise.all([
+      refreshClan(),
+      getDailyProgress(uid).then(setDailyProgress),
+      getDailyClaimedMask(uid).then(setClaimedMask),
+      loadSeqMission(uid),
+      loadTandem(uid),
+    ]);
+  };
 
   useEffect(() => {
     if (!user) return;
-    // Carica progresso giornaliero
-    getDailyProgress(user.id).then(setDailyProgress);
-    // Carica missione sequenziale corrente
-    supabase.from('profiles').select('current_mission').eq('id', user.id).single().then(({ data }) => {
-      const n = data?.current_mission ?? 1;
-      setCurrentMission(n);
-      const mission = SEQ_MISSIONS[n - 1];
-      if (mission) {
-        calcSeqProgress(mission, user.id).then(p => {
-          setSeqProgress(p);
-          setSeqLoading(false);
-          // Auto-avanza se completata
-          if (p.completed) advanceSeqMission(user.id, n);
-        });
-      } else {
-        setSeqLoading(false);
-      }
-    });
+    refreshAll(user.id);
   }, [user?.id]);
+
+  // Aggiorna missioni ogni volta che si torna sulla home (es. dopo aver loggato un drink)
+  useFocusEffect(useCallback(() => {
+    if (!user) return;
+    getDailyProgress(user.id).then(setDailyProgress);
+    getDailyClaimedMask(user.id).then(setClaimedMask);
+  }, [user?.id]));
+
+  // Auto-aggiorna progresso missioni quando cambia il numero di log
+  useEffect(() => {
+    if (!user) return;
+    getDailyProgress(user.id).then(setDailyProgress);
+    loadSeqMission(user.id);
+  }, [state.logs.length]);
+
+  const onRefresh = async () => {
+    if (!user) return;
+    setRefreshing(true);
+    await refreshAll(user.id);
+    setRefreshing(false);
+  };
 
   // ─── Mentality daily reward ───
   const [mentalityBanner, setMentalityBanner] = useState<string | null>(null);
@@ -113,7 +196,7 @@ export default function DashboardScreen() {
   }, [user?.id]);
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content} refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FFD700" />}>
       {/* Mentality banner */}
       {mentalityBanner && (
         <Animated.View style={[styles.mentalityBanner, { opacity: bannerOpacity }]}>
@@ -183,15 +266,22 @@ export default function DashboardScreen() {
         {(() => {
           const done = dailyProgress ? dailyProgress.runKm >= dailyMissionsDef.runKm : false;
           const pct = dailyProgress ? Math.min(dailyProgress.runKm / dailyMissionsDef.runKm, 1) : 0;
+          const claimed = !!(claimedMask & 1);
           return (
-            <View style={[mStyles.dailyCard, done && mStyles.dailyCardDone]}>
+            <View style={[mStyles.dailyCard, done && mStyles.dailyCardDone, claimed && mStyles.dailyCardClaimed]}>
               <Text style={mStyles.dailyEmoji}>🏃</Text>
               <Text style={mStyles.dailyTarget}>{dailyMissionsDef.runKm} km</Text>
               <Text style={mStyles.dailyLabel}>Corsa</Text>
               <View style={mStyles.miniBarBg}>
                 <View style={[mStyles.miniBarFill, { width: `${Math.round(pct * 100)}%` as any, backgroundColor: done ? '#4CAF50' : '#2196F3' }]} />
               </View>
-              {done && <Text style={mStyles.doneCheck}>✓</Text>}
+              {claimed ? (
+                <Text style={mStyles.claimedText}>🎟 Riscosso</Text>
+              ) : done ? (
+                <TouchableOpacity style={mStyles.claimBtn} onPress={() => handleClaimDaily(1)}>
+                  <Text style={mStyles.claimBtnText}>Riscuoti 🎟</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           );
         })()}
@@ -203,15 +293,22 @@ export default function DashboardScreen() {
           const label = dailyMissionsDef.activityMin >= 60
             ? `${dailyMissionsDef.activityMin / 60}h`
             : `${dailyMissionsDef.activityMin} min`;
+          const claimed = !!(claimedMask & 2);
           return (
-            <View style={[mStyles.dailyCard, done && mStyles.dailyCardDone]}>
+            <View style={[mStyles.dailyCard, done && mStyles.dailyCardDone, claimed && mStyles.dailyCardClaimed]}>
               <Text style={mStyles.dailyEmoji}>⏱️</Text>
               <Text style={mStyles.dailyTarget}>{label}</Text>
               <Text style={mStyles.dailyLabel}>Attività</Text>
               <View style={mStyles.miniBarBg}>
                 <View style={[mStyles.miniBarFill, { width: `${Math.round(pct * 100)}%` as any, backgroundColor: done ? '#4CAF50' : '#FF9800' }]} />
               </View>
-              {done && <Text style={mStyles.doneCheck}>✓</Text>}
+              {claimed ? (
+                <Text style={mStyles.claimedText}>🎟 Riscosso</Text>
+              ) : done ? (
+                <TouchableOpacity style={mStyles.claimBtn} onPress={() => handleClaimDaily(2)}>
+                  <Text style={mStyles.claimBtnText}>Riscuoti 🎟</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
           );
         })()}
@@ -219,15 +316,25 @@ export default function DashboardScreen() {
         {/* No drink */}
         {(() => {
           const done = dailyProgress?.noDrink ?? false;
+          const drankYest = dailyProgress?.drankYesterday ?? false;
+          const claimed = !!(claimedMask & 4);
           return (
-            <View style={[mStyles.dailyCard, done && mStyles.dailyCardDone]}>
-              <Text style={mStyles.dailyEmoji}>{done ? '✅' : '🍺'}</Text>
-              <Text style={mStyles.dailyTarget}>{done ? 'Fatto!' : 'Oggi'}</Text>
+            <View style={[mStyles.dailyCard, done && mStyles.dailyCardDone, claimed && mStyles.dailyCardClaimed, drankYest && mStyles.dailyCardFail]}>
+              <Text style={mStyles.dailyEmoji}>{claimed ? '✅' : done ? '✅' : drankYest ? '🐷' : '🍺'}</Text>
+              <Text style={mStyles.dailyTarget}>{done ? 'Fatto!' : drankYest ? 'Oink!' : 'Ieri'}</Text>
               <Text style={mStyles.dailyLabel}>No drink</Text>
               <View style={mStyles.miniBarBg}>
-                <View style={[mStyles.miniBarFill, { width: done ? '100%' : '0%', backgroundColor: '#4CAF50' }]} />
+                <View style={[mStyles.miniBarFill, { width: done ? '100%' : '0%', backgroundColor: drankYest ? '#E8445A' : '#4CAF50' }]} />
               </View>
-              {done && <Text style={mStyles.doneCheck}>✓</Text>}
+              {claimed ? (
+                <Text style={mStyles.claimedText}>🎟 Riscosso</Text>
+              ) : done ? (
+                <TouchableOpacity style={mStyles.claimBtn} onPress={() => handleClaimDaily(4)}>
+                  <Text style={mStyles.claimBtnText}>Riscuoti 🎟</Text>
+                </TouchableOpacity>
+              ) : drankYest ? (
+                <Text style={mStyles.failText}>Hai bevuto 🍺</Text>
+              ) : null}
             </View>
           );
         })()}
@@ -236,11 +343,11 @@ export default function DashboardScreen() {
       {/* Missione sequenziale */}
       <Text style={styles.sectionTitle}>Missioni di vita</Text>
       {seqLoading ? (
-        <View style={mStyles.seqCard}><Text style={{ color: '#aaa', textAlign: 'center' }}>Caricamento...</Text></View>
+        <View style={mStyles.seqCard}><Text style={{ color: colors.textFaint, textAlign: 'center' }}>Caricamento...</Text></View>
       ) : currentMission > 100 ? (
         <View style={mStyles.seqCard}>
           <Text style={{ fontSize: 24, textAlign: 'center' }}>🏆</Text>
-          <Text style={{ fontSize: 15, fontWeight: '800', color: '#1a1a1a', textAlign: 'center', marginTop: 8 }}>Tutte le 100 missioni completate!</Text>
+          <Text style={{ fontSize: 15, fontWeight: '800', color: colors.text, textAlign: 'center', marginTop: 8 }}>Tutte le 100 missioni completate!</Text>
         </View>
       ) : (() => {
         const m = SEQ_MISSIONS[currentMission - 1];
@@ -251,14 +358,21 @@ export default function DashboardScreen() {
             <View style={mStyles.seqHeader}>
               <View style={mStyles.seqBadge}><Text style={mStyles.seqBadgeText}>#{currentMission}</Text></View>
               <Text style={mStyles.seqLabel} numberOfLines={2}>{m?.label}</Text>
-              <View style={mStyles.seqTokenBadge}><Text style={mStyles.seqTokenText}>🎟 1</Text></View>
             </View>
             <View style={mStyles.seqBarBg}>
               <View style={[mStyles.seqBarFill, { width: `${pct}%` as any, backgroundColor: p?.completed ? '#4CAF50' : '#FFD700' }]} />
             </View>
             <View style={mStyles.seqFooter}>
               <Text style={mStyles.seqProgressText}>{p?.displayValue ?? '...'}</Text>
-              {p?.completed && <Text style={mStyles.seqDone}>Completata! →{currentMission + 1}</Text>}
+              {p?.completed && currentMission <= 100 && (
+                <TouchableOpacity
+                  style={mStyles.advanceBtn}
+                  onPress={handleAdvanceSeq}
+                  disabled={advancingSeq}
+                >
+                  <Text style={mStyles.advanceBtnText}>{advancingSeq ? '...' : `Avanza →${currentMission + 1}`}</Text>
+                </TouchableOpacity>
+              )}
             </View>
           </View>
         );
@@ -361,156 +475,173 @@ export default function DashboardScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#f7f7f7' },
-  content: { padding: 20, paddingBottom: 40 },
+function makeStyles(colors: ThemeColors, isDark: boolean) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.bg },
+    content: { padding: 20, paddingBottom: 40 },
 
-  // Mentality banner
-  mentalityBanner: {
-    backgroundColor: '#E8F5E9', borderRadius: 14, padding: 14,
-    marginBottom: 12, alignItems: 'center',
-    borderWidth: 2, borderColor: '#4CAF50',
-  },
-  mentalityBannerText: { fontSize: 15, fontWeight: '700', color: '#2e7d32' },
+    // Mentality banner
+    mentalityBanner: {
+      backgroundColor: isDark ? '#1c3320' : '#E8F5E9', borderRadius: 14, padding: 14,
+      marginBottom: 12, alignItems: 'center',
+      borderWidth: 2, borderColor: '#4CAF50',
+    },
+    mentalityBannerText: { fontSize: 15, fontWeight: '700', color: isDark ? '#7ed896' : '#2e7d32' },
 
-  // 1. Hero score — compatta
-  heroCard: {
-    backgroundColor: '#fff', borderRadius: 20, padding: 20,
-    alignItems: 'center', marginBottom: 16,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.07, shadowRadius: 8, elevation: 3,
-  },
-  hello: { fontSize: 13, color: '#aaa', marginBottom: 6 },
-  scoreRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  heartBig: { fontSize: 40 },
-  heartsNumber: { fontSize: 56, fontWeight: '900', lineHeight: 64 },
-  motivational: { fontSize: 13, color: '#888', marginTop: 6, textAlign: 'center' },
+    // 1. Hero score — compatta
+    heroCard: {
+      backgroundColor: colors.card, borderRadius: 20, padding: 20,
+      alignItems: 'center', marginBottom: 16,
+      shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: isDark ? 0 : 0.07, shadowRadius: 8, elevation: isDark ? 0 : 3,
+    },
+    hello: { fontSize: 13, color: colors.textFaint, marginBottom: 6 },
+    scoreRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+    heartBig: { fontSize: 40 },
+    heartsNumber: { fontSize: 56, fontWeight: '900', lineHeight: 64 },
+    motivational: { fontSize: 13, color: colors.textDim, marginTop: 6, textAlign: 'center' },
 
-  sectionTitle: {
-    fontSize: 13, fontWeight: '700', color: '#aaa',
-    letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10, marginTop: 8,
-  },
+    sectionTitle: {
+      fontSize: 13, fontWeight: '700', color: colors.textFaint,
+      letterSpacing: 1, textTransform: 'uppercase', marginBottom: 10, marginTop: 8,
+    },
 
-  // 2. CTA + contatori
-  ctaRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
-  ctaButton: {
-    flex: 1, borderRadius: 16, paddingVertical: 16, paddingHorizontal: 12,
-    alignItems: 'center',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.15, shadowRadius: 6, elevation: 4,
-  },
-  ctaIcon: { fontSize: 28, marginBottom: 4 },
-  ctaText: { color: '#fff', fontWeight: '700', fontSize: 15, marginBottom: 6 },
-  ctaBadge: {
-    backgroundColor: 'rgba(255,255,255,0.25)', borderRadius: 8,
-    paddingHorizontal: 10, paddingVertical: 4,
-  },
-  ctaBadgeText: { color: '#fff', fontSize: 11, fontWeight: '600' },
+    // 2. CTA + contatori
+    ctaRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
+    ctaButton: {
+      flex: 1, borderRadius: 16, paddingVertical: 16, paddingHorizontal: 12,
+      alignItems: 'center',
+      shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: isDark ? 0 : 0.15, shadowRadius: 6, elevation: isDark ? 0 : 4,
+    },
+    ctaIcon: { fontSize: 28, marginBottom: 4 },
+    ctaText: { color: '#fff', fontWeight: '700', fontSize: 15, marginBottom: 6 },
+    ctaBadge: {
+      backgroundColor: 'rgba(255,255,255,0.25)', borderRadius: 8,
+      paddingHorizontal: 10, paddingVertical: 4,
+    },
+    ctaBadgeText: { color: '#fff', fontSize: 11, fontWeight: '600' },
 
-  // Health
-  healthBtn: {
-    backgroundColor: '#fff', borderRadius: 14, padding: 14,
-    flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
-    marginBottom: 16, gap: 10,
-    borderWidth: 2, borderColor: '#4CAF50',
-  },
-  healthBtnIcon: { fontSize: 20 },
-  healthBtnText: { fontSize: 14, fontWeight: '700', color: '#2e7d32' },
+    // Health
+    healthBtn: {
+      backgroundColor: isDark ? '#4CAF50' : colors.card, borderRadius: 14, padding: 14,
+      flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+      marginBottom: 16, gap: 10,
+      borderWidth: 2, borderColor: '#4CAF50',
+    },
+    healthBtnIcon: { fontSize: 20 },
+    healthBtnText: { fontSize: 14, fontWeight: '700', color: isDark ? '#fff' : '#2e7d32' },
 
-  // 3. Tandem — diagonale
-  tandemCard: {
-    backgroundColor: '#fff', borderRadius: 18, padding: 16, marginBottom: 20,
-    borderWidth: 2, borderColor: '#9C27B0',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06, shadowRadius: 6, elevation: 2,
-    overflow: 'hidden',
-  },
-  tandemHeader: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    marginBottom: 16,
-  },
-  tandemName: { fontSize: 16, fontWeight: '800', color: '#1a1a1a' },
-  tandemTotal: { fontSize: 20, fontWeight: '900' },
-  tandemBody: {
-    flexDirection: 'row', alignItems: 'center',
-  },
-  tandemHalf: {
-    flex: 1, alignItems: 'center', paddingVertical: 8,
-  },
-  tandemMemberName: { fontSize: 13, fontWeight: '700', color: '#333', maxWidth: 100, textAlign: 'center', marginTop: 8 },
-  tandemMemberScore: { fontSize: 22, fontWeight: '900', marginTop: 2 },
-  tandemDiagonalContainer: {
-    width: 24, height: 100, alignItems: 'center', justifyContent: 'center',
-  },
-  tandemDiagonal: {
-    width: 2, height: 120, backgroundColor: '#E0C0E8',
-    transform: [{ rotate: '20deg' }],
-  },
+    // 3. Tandem — diagonale
+    tandemCard: {
+      backgroundColor: colors.card, borderRadius: 18, padding: 16, marginBottom: 20,
+      borderWidth: 2, borderColor: '#9C27B0',
+      shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: isDark ? 0 : 0.06, shadowRadius: 6, elevation: isDark ? 0 : 2,
+      overflow: 'hidden',
+    },
+    tandemHeader: {
+      flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
+      marginBottom: 16,
+    },
+    tandemName: { fontSize: 16, fontWeight: '800', color: colors.text },
+    tandemTotal: { fontSize: 20, fontWeight: '900' },
+    tandemBody: {
+      flexDirection: 'row', alignItems: 'center',
+    },
+    tandemHalf: {
+      flex: 1, alignItems: 'center', paddingVertical: 8,
+    },
+    tandemMemberName: { fontSize: 13, fontWeight: '700', color: colors.textDim, maxWidth: 100, textAlign: 'center', marginTop: 8 },
+    tandemMemberScore: { fontSize: 22, fontWeight: '900', marginTop: 2 },
+    tandemDiagonalContainer: {
+      width: 24, height: 100, alignItems: 'center', justifyContent: 'center',
+    },
+    tandemDiagonal: {
+      width: 2, height: 120, backgroundColor: isDark ? '#5a3d63' : '#E0C0E8',
+      transform: [{ rotate: '20deg' }],
+    },
 
-  // 4. Clan — avatar circolari
-  clanCard: {
-    backgroundColor: '#fff', borderRadius: 18, padding: 16, marginBottom: 20,
-    borderWidth: 2, borderColor: '#FFD700',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.06, shadowRadius: 6, elevation: 2,
-  },
-  clanHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
-  clanName: { fontSize: 16, fontWeight: '800', color: '#1a1a1a' },
-  clanCode: { fontSize: 12, color: '#aaa', fontWeight: '600' },
-  clanTotal: { fontSize: 28, fontWeight: '900', marginBottom: 14, textAlign: 'center' },
-  clanMembersGrid: {
-    flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 16,
-  },
-  clanMemberItem: { alignItems: 'center', width: 64 },
-  clanMemberName: { fontSize: 11, fontWeight: '600', color: '#555', textAlign: 'center', maxWidth: 64, marginTop: 6 },
-  clanMemberScore: { fontSize: 13, fontWeight: '800', marginTop: 1 },
+    // 4. Clan — avatar circolari
+    clanCard: {
+      backgroundColor: colors.card, borderRadius: 18, padding: 16, marginBottom: 20,
+      borderWidth: 2, borderColor: '#FFD700',
+      shadowColor: '#000', shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: isDark ? 0 : 0.06, shadowRadius: 6, elevation: isDark ? 0 : 2,
+    },
+    clanHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 },
+    clanName: { fontSize: 16, fontWeight: '800', color: colors.text },
+    clanCode: { fontSize: 12, color: colors.textFaint, fontWeight: '600' },
+    clanTotal: { fontSize: 28, fontWeight: '900', marginBottom: 14, textAlign: 'center' },
+    clanMembersGrid: {
+      flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'center', gap: 16,
+    },
+    clanMemberItem: { alignItems: 'center', width: 64 },
+    clanMemberName: { fontSize: 11, fontWeight: '600', color: colors.textDim, textAlign: 'center', maxWidth: 64, marginTop: 6 },
+    clanMemberScore: { fontSize: 13, fontWeight: '800', marginTop: 1 },
 
-  // 5. Recent logs
-  recentCard: {
-    backgroundColor: '#fff', borderRadius: 12, padding: 14,
-    flexDirection: 'row', alignItems: 'center', marginBottom: 8,
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.04, shadowRadius: 3, elevation: 1,
-  },
-  recentIcon: { fontSize: 22, marginRight: 12 },
-  recentName: { fontSize: 14, fontWeight: '600', color: '#1a1a1a' },
-  recentTime: { fontSize: 12, color: '#aaa', marginTop: 2 },
-  recentDelta: { fontSize: 14, fontWeight: '700' },
-});
+    // 5. Recent logs
+    recentCard: {
+      backgroundColor: colors.card, borderRadius: 12, padding: 14,
+      flexDirection: 'row', alignItems: 'center', marginBottom: 8,
+      shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: isDark ? 0 : 0.04, shadowRadius: 3, elevation: isDark ? 0 : 1,
+    },
+    recentIcon: { fontSize: 22, marginRight: 12 },
+    recentName: { fontSize: 14, fontWeight: '600', color: colors.text },
+    recentTime: { fontSize: 12, color: colors.textFaint, marginTop: 2 },
+    recentDelta: { fontSize: 14, fontWeight: '700' },
+  });
+}
 
-const mStyles = StyleSheet.create({
-  // Daily missions row
-  dailyRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
-  dailyCard: {
-    flex: 1, backgroundColor: '#fff', borderRadius: 14, padding: 10,
-    alignItems: 'center', borderWidth: 1.5, borderColor: '#eee',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 3, elevation: 1,
-  },
-  dailyCardDone: { borderColor: '#4CAF50', backgroundColor: '#f0fff4' },
-  dailyEmoji: { fontSize: 22, marginBottom: 4 },
-  dailyTarget: { fontSize: 15, fontWeight: '900', color: '#1a1a1a' },
-  dailyLabel: { fontSize: 10, color: '#aaa', fontWeight: '600', marginBottom: 6, textTransform: 'uppercase' },
-  miniBarBg: { width: '100%', height: 5, backgroundColor: '#f0f0f0', borderRadius: 3, overflow: 'hidden', marginBottom: 4 },
-  miniBarFill: { height: 5, borderRadius: 3 },
-  doneCheck: { fontSize: 12, color: '#4CAF50', fontWeight: '800' },
+function makeMStyles(colors: ThemeColors, isDark: boolean) {
+  return StyleSheet.create({
+    // Daily missions row
+    dailyRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
+    dailyCard: {
+      flex: 1, backgroundColor: colors.card, borderRadius: 14, padding: 10,
+      alignItems: 'center', borderWidth: 1.5, borderColor: colors.border,
+      shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: isDark ? 0 : 0.05, shadowRadius: 3, elevation: isDark ? 0 : 1,
+      minHeight: 130,
+    },
+    dailyCardDone: { borderColor: '#4CAF50', backgroundColor: isDark ? '#16291a' : '#f0fff4' },
+    dailyEmoji: { fontSize: 22, marginBottom: 4 },
+    dailyTarget: { fontSize: 15, fontWeight: '900', color: colors.text },
+    dailyLabel: { fontSize: 10, color: colors.textFaint, fontWeight: '600', marginBottom: 6, textTransform: 'uppercase' },
+    miniBarBg: { width: '100%', height: 5, backgroundColor: colors.border, borderRadius: 3, overflow: 'hidden', marginBottom: 4 },
+    miniBarFill: { height: 5, borderRadius: 3 },
+    doneCheck: { fontSize: 12, color: '#4CAF50', fontWeight: '800' },
+    dailyCardClaimed: { borderColor: '#9C27B0', backgroundColor: isDark ? '#2a1830' : '#f9f0ff' },
+    dailyCardFail: { borderColor: '#E8445A', backgroundColor: isDark ? '#301818' : '#fff5f5' },
+    failText: { fontSize: 10, color: '#E8445A', fontWeight: '700', marginTop: 4 },
+    claimBtn: {
+      marginTop: 6, backgroundColor: '#FFD700', borderRadius: 8,
+      paddingHorizontal: 8, paddingVertical: 4,
+    },
+    claimBtnText: { fontSize: 11, fontWeight: '800', color: '#7a5800' },
+    claimedText: { fontSize: 10, color: '#9C27B0', fontWeight: '700', marginTop: 4 },
 
-  // Sequential mission card
-  seqCard: {
-    backgroundColor: '#fff', borderRadius: 14, padding: 16, marginBottom: 16,
-    borderWidth: 1.5, borderColor: '#eee',
-    shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4, elevation: 1,
-  },
-  seqHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 12 },
-  seqBadge: {
-    backgroundColor: '#1a1a1a', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, flexShrink: 0,
-  },
-  seqBadgeText: { fontSize: 12, fontWeight: '900', color: '#FFD700' },
-  seqLabel: { flex: 1, fontSize: 14, fontWeight: '700', color: '#1a1a1a', lineHeight: 20 },
-  seqTokenBadge: { backgroundColor: '#FFF8E1', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, borderWidth: 1, borderColor: '#FFD700', flexShrink: 0 },
-  seqTokenText: { fontSize: 12, fontWeight: '800', color: '#b8860b' },
-  seqBarBg: { height: 8, backgroundColor: '#f0f0f0', borderRadius: 4, overflow: 'hidden', marginBottom: 8 },
-  seqBarFill: { height: 8, borderRadius: 4 },
-  seqFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  seqProgressText: { fontSize: 12, color: '#888' },
-  seqDone: { fontSize: 12, fontWeight: '800', color: '#4CAF50' },
-});
+    // Sequential mission card
+    seqCard: {
+      backgroundColor: colors.card, borderRadius: 14, padding: 16, marginBottom: 16,
+      borderWidth: 1.5, borderColor: colors.border,
+      shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: isDark ? 0 : 0.05, shadowRadius: 4, elevation: isDark ? 0 : 1,
+    },
+    seqHeader: { flexDirection: 'row', alignItems: 'flex-start', gap: 10, marginBottom: 12 },
+    seqBadge: {
+      backgroundColor: '#1a1a1a', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4, flexShrink: 0,
+    },
+    seqBadgeText: { fontSize: 12, fontWeight: '900', color: '#FFD700' },
+    seqLabel: { flex: 1, fontSize: 14, fontWeight: '700', color: colors.text, lineHeight: 20 },
+    seqBarBg: { height: 8, backgroundColor: colors.border, borderRadius: 4, overflow: 'hidden', marginBottom: 8 },
+    seqBarFill: { height: 8, borderRadius: 4 },
+    seqFooter: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
+    seqProgressText: { fontSize: 12, color: colors.textDim },
+    seqDone: { fontSize: 12, fontWeight: '800', color: '#4CAF50' },
+    advanceBtn: {
+      backgroundColor: '#4CAF50', borderRadius: 8,
+      paddingHorizontal: 10, paddingVertical: 4,
+    },
+    advanceBtnText: { fontSize: 12, fontWeight: '800', color: '#fff' },
+  });
+}

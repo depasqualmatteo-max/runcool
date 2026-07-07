@@ -2,11 +2,12 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
 import { AppState, DrinkLog, LogEntry, WorkoutLog } from '@/types';
 import { DRINK_MAP } from '@/constants/drinks';
-import { WORKOUT_MAP, calcWalkingCalories } from '@/constants/workouts';
+import { WORKOUT_MAP, calcWalkingCalories, calcHeartsFromDuration } from '@/constants/workouts';
 import { calcHeartsLost, calcHeartsGained } from '@/constants/hearts';
 import { useAuth } from '@/context/AuthContext';
 import { sendPushNotification } from '@/lib/notifications';
 import { getCountryCode } from '@/lib/geo';
+import { VARIANT_SKIN_IDS } from '@/constants/shop';
 import type { DrinkId, WorkoutId } from '@/types';
 
 export interface LogWorkoutParams {
@@ -16,13 +17,14 @@ export interface LogWorkoutParams {
   elevationMeters?: number;
   /** Se passato, usa queste calorie direttamente senza ricalcolare (usato da health import) */
   overrideCalories?: number;
+  activityDate?: string;
 }
 
 interface AppContextValue {
   state: AppState;
   isLoading: boolean;
-  logDrink: (drinkId: DrinkId, quantity: number) => Promise<void>;
-  logWorkout: (params: LogWorkoutParams) => Promise<void>;
+  logDrink: (drinkId: DrinkId, quantity: number, activityDate?: string) => Promise<string | null>;
+  logWorkout: (params: LogWorkoutParams) => Promise<string | null>;
   deleteLog: (id: string) => Promise<void>;
 }
 
@@ -122,13 +124,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     }
   }
 
-  async function logDrink(drinkId: DrinkId, quantity: number) {
+  async function logDrink(drinkId: DrinkId, quantity: number, activityDate?: string) {
     if (!user) return;
     const drink = DRINK_MAP[drinkId];
     const calories = Math.round(drink.calories * quantity);
-    // Usa heartsLost dalla definizione del drink × quantità (non calorie / 100)
     const heartsLost = Math.round(drink.heartsLost * quantity);
     const newHearts = Math.round(state.hearts - heartsLost);
+    const logDate = activityDate ?? new Date().toISOString().slice(0, 10);
 
     const { data: logRow, error } = await supabase
       .from('logs')
@@ -140,6 +142,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         quantity,
         calories,
         hearts_delta: -heartsLost,
+        activity_date: logDate,
       })
       .select()
       .single();
@@ -153,37 +156,35 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
 
     setState((s) => ({ hearts: newHearts, logs: [rowToLogEntry(logRow), ...s.logs] }));
 
-    // Nessuna notifica per i drink
+    return logRow?.id ?? null;
   }
 
   async function logWorkout(params: LogWorkoutParams) {
     if (!user) return;
-    const { workoutId, durationMinutes, km, elevationMeters, overrideCalories } = params;
+    const { workoutId, durationMinutes, km, elevationMeters, overrideCalories, activityDate } = params;
+    const logDate = activityDate ?? new Date().toISOString().slice(0, 10);
     const workout = WORKOUT_MAP[workoutId];
 
     let calories = 0;
+    let heartsGained = 0;
 
     if (overrideCalories != null && overrideCalories > 0) {
+      // Health Connect: calorie → cuori
       calories = overrideCalories;
-    } else {
-      const isKmSport = workout.inputType === 'km' || workout.inputType === 'km_elevation';
-      if (isKmSport && km && km > 0) {
-        if (workout.inputType === 'km_elevation') {
-          // Formula: cuori = (km + dislivello × 0.03) / 6
-          const directHearts = Math.max(1, Math.round((km + (elevationMeters ?? 0) * 0.03) / 6));
-          calories = directHearts * 240; // 240 = calPerHeart camminata
-        } else {
-          calories = Math.round((workout.calPerKm ?? 60) * km);
-        }
-      } else if (durationMinutes && durationMinutes > 0) {
-        calories = Math.round((workout.calPerMin ?? 7) * durationMinutes);
-      }
-      if (calories === 0 && durationMinutes && durationMinutes > 0) {
-        calories = Math.round(7 * durationMinutes);
-      }
+      heartsGained = calcHeartsGained(calories, workoutId);
+    } else if (workout.inputType === 'km' && km && km > 0) {
+      // Corsa manuale: km → calorie → cuori
+      calories = Math.round((workout.calPerKm ?? 60) * km);
+      heartsGained = calcHeartsGained(calories, workoutId);
+    } else if (workout.inputType === 'km_elevation' && km && km > 0) {
+      // Camminata manuale: km+dislivello → cuori diretti
+      heartsGained = Math.floor((km + (elevationMeters ?? 0) * 0.03) / 6);
+      calories = heartsGained * 240;
+    } else if (durationMinutes && durationMinutes > 0) {
+      // Sport a durata manuale: tempo → cuori diretti (senza passare per calorie)
+      heartsGained = calcHeartsFromDuration(durationMinutes, workout.heartsPerHour ?? 3);
+      calories = Math.round((workout.calPerMin ?? 7) * durationMinutes); // solo per storico
     }
-
-    const heartsGained = calories > 0 ? calcHeartsGained(calories, workoutId) : 0;
     const newHearts = Math.round(state.hearts + heartsGained);
 
     const { data: logRow, error } = await supabase
@@ -199,6 +200,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         duration_minutes: durationMinutes ?? null,
         km: km ?? null,
         elevation_meters: elevationMeters ?? null,
+        activity_date: logDate,
       })
       .select()
       .single();
@@ -219,6 +221,38 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       getCountryCode().then(cc => {
         if (cc) supabase.from('logs').update({ country_code: cc }).eq('id', logRow.id).then(() => {});
       }).catch(() => {});
+    }
+
+    const insertedId = logRow?.id ?? null;
+
+    // Traccia punti skin: 1pt ogni 500m (corsa) o ogni 12min (altri sport)
+    // Solo per skin classiche variant-abili — vale per qualsiasi log appena creato,
+    // anche se retrodatato a un giorno precedente
+    {
+      const VARIANT_IDS = VARIANT_SKIN_IDS;
+      supabase.from('profiles')
+        .select('pig_skin, pig_skin_points, pig_owned_pro_skins')
+        .eq('id', user.id).single()
+        .then(async ({ data: prof }) => {
+          if (!prof) return;
+          const skinId: number = prof.pig_skin ?? 0;
+          if (!VARIANT_IDS.includes(skinId)) return;
+          let ptsEarned = 0;
+          if (workout.inputType === 'km' && km && km >= 0.5) ptsEarned = Math.floor(km / 0.5);
+          else if (durationMinutes && durationMinutes >= 12) ptsEarned = Math.floor(durationMinutes / 12);
+          if (ptsEarned <= 0) return;
+          const points: Record<string, number> = prof.pig_skin_points ?? {};
+          const key = String(skinId);
+          const prev = points[key] ?? 0;
+          const next = prev + ptsEarned;
+          const update: any = { pig_skin_points: { ...points, [key]: next } };
+          // Sblocca pro se raggiunge 100 punti
+          const ownedPro: number[] = prof.pig_owned_pro_skins ?? [];
+          if (next >= 100 && !ownedPro.includes(skinId)) {
+            update.pig_owned_pro_skins = [...ownedPro, skinId];
+          }
+          supabase.from('profiles').update(update).eq('id', user.id).then(() => {});
+        });
     }
 
     // Notifica sorpasso classifica clan
@@ -243,6 +277,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         }
       }
     }
+
+    return insertedId;
   }
 
   async function deleteLog(id: string) {

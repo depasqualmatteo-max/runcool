@@ -102,20 +102,29 @@ Deno.serve(async (req) => {
     const t1 = shuffled[i * 2];
     const t2 = shuffled[i * 2 + 1];
 
-    // Prendi push token dei membri di entrambi i tandem
+    const notifTitle = '⚔️ Nuova sfida tandem!';
+    const notifBody = `${t1.name} vs ${t2.name} — chi vince questa settimana?`;
+
+    // Prendi id + push token dei membri di entrambi i tandem
     const { data: members } = await supabase
       .from('profiles')
-      .select('push_token')
+      .select('id, push_token')
       .in('tandem_id', [t1.id, t2.id])
       .not('push_token', 'is', null);
 
     for (const m of members ?? []) {
-      notifications.push({
-        to: m.push_token,
-        title: '⚔️ Nuova sfida tandem!',
-        body: `${t1.name} vs ${t2.name} — chi vince questa settimana?`,
-        sound: 'default',
-      });
+      notifications.push({ to: m.push_token, title: notifTitle, body: notifBody, sound: 'default' });
+    }
+
+    // Salva nel DB per lo storico (tutti i membri, anche senza push token)
+    const { data: allMembers } = await supabase
+      .from('profiles')
+      .select('id')
+      .in('tandem_id', [t1.id, t2.id]);
+    if (allMembers && allMembers.length > 0) {
+      await supabase.from('notifications').insert(
+        allMembers.map((m: any) => ({ user_id: m.id, title: notifTitle, body: notifBody }))
+      );
     }
   }
 
