@@ -71,8 +71,12 @@ Deno.serve(async (req) => {
   clanScores.sort((a, b) => b.score - a.score);
   const clanPodium = clanScores.slice(0, 3);
 
+  // ─── Rank singoli completo (per best_monthly_rank) ───────────────────────
+  const singRanked = Object.entries(singMap).sort((a, b) => b[1] - a[1]);
+  const singRankMap: Record<string, number> = {};
+  singRanked.forEach(([id], i) => { singRankMap[id] = i + 1; });
+
   // ─── Aggiorna rank_counts per ogni utente coinvolto ──────────────────────
-  // Carica tutti i profili con rank_counts esistenti
   const allIds = [
     ...singPodium,
     ...tandemPodium.flatMap((t) => t.memberIds),
@@ -82,11 +86,15 @@ Deno.serve(async (req) => {
 
   const { data: profiles } = await supabase
     .from('profiles')
-    .select('id, rank_counts')
+    .select('id, rank_counts, best_monthly_rank')
     .in('id', uniqueIds);
 
   const profileMap: Record<string, any> = {};
-  for (const p of profiles ?? []) profileMap[p.id] = p.rank_counts ?? {};
+  const bestRankMap: Record<string, number> = {};
+  for (const p of profiles ?? []) {
+    profileMap[p.id] = p.rank_counts ?? {};
+    bestRankMap[p.id] = p.best_monthly_rank ?? 9999;
+  }
 
   function inc(id: string, key: string) {
     if (!profileMap[id]) profileMap[id] = {};
@@ -110,9 +118,12 @@ Deno.serve(async (req) => {
     for (const uid of c.memberIds) inc(uid, key);
   }
 
-  // Scrivi su DB
+  // Scrivi rank_counts + best_monthly_rank su DB
   for (const [id, counts] of Object.entries(profileMap)) {
-    await supabase.from('profiles').update({ rank_counts: counts }).eq('id', id);
+    const thisMonthRank = singRankMap[id] ?? null;
+    const currentBest = bestRankMap[id] ?? 9999;
+    const newBest = thisMonthRank !== null && thisMonthRank < currentBest ? thisMonthRank : (currentBest < 9999 ? currentBest : null);
+    await supabase.from('profiles').update({ rank_counts: counts, best_monthly_rank: newBest }).eq('id', id);
   }
 
   return new Response(JSON.stringify({

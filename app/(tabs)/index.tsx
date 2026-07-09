@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Animated, RefreshControl, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Platform, Animated, RefreshControl, Alert, Modal, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useApp } from '@/context/AppContext';
@@ -17,6 +17,8 @@ import {
   advanceSeqMission, claimDailyMission, getDailyClaimedMask,
   type DailyProgress, type SeqProgress,
 } from '@/lib/personalMissions';
+import { LogCard, makeLogCardStyles, type LogRow, type ReactionSummary, type Reactor } from '@/components/LogCard';
+import { sendPushNotification } from '@/lib/notifications';
 
 function getMotivationalPhrase(hearts: number): string {
   if (hearts <= -50) return 'Situazione critica... il fegato chiede pietà';
@@ -76,6 +78,12 @@ export default function DashboardScreen() {
   const [seqLoading, setSeqLoading] = useState(true);
   const [advancingSeq, setAdvancingSeq] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [myFeedLogs, setMyFeedLogs] = useState<LogRow[]>([]);
+  const [showAllFeed, setShowAllFeed] = useState(false);
+  const [reactionsByLog, setReactionsByLog] = useState<Record<string, ReactionSummary[]>>({});
+  const [reactorsByLog, setReactorsByLog] = useState<Record<string, Reactor[]>>({});
+  const [reactorsModal, setReactorsModal] = useState<{ logId: string } | null>(null);
+  const FEED_LIMIT = 15;
 
   const loadSeqMission = async (uid: string) => {
     const { data } = await supabase
@@ -131,6 +139,87 @@ export default function DashboardScreen() {
     if (ok) setClaimedMask(m => m | bit);
   };
 
+  const fetchFeedReactions = useCallback(async (logIds: string[]) => {
+    if (!user || logIds.length === 0) return;
+    const { data } = await supabase
+      .from('log_reactions')
+      .select('log_id, user_id, emoji, profiles(username, avatar_url)')
+      .in('log_id', logIds);
+    const grouped: Record<string, Record<string, { count: number; mine: boolean }>> = {};
+    const reactors: Record<string, Reactor[]> = {};
+    (data ?? []).forEach((r: any) => {
+      if (!grouped[r.log_id]) grouped[r.log_id] = {};
+      if (!grouped[r.log_id][r.emoji]) grouped[r.log_id][r.emoji] = { count: 0, mine: false };
+      grouped[r.log_id][r.emoji].count++;
+      if (r.user_id === user.id) grouped[r.log_id][r.emoji].mine = true;
+      if (!reactors[r.log_id]) reactors[r.log_id] = [];
+      reactors[r.log_id].push({ userId: r.user_id, username: r.profiles?.username ?? '?', avatarUrl: r.profiles?.avatar_url ?? null, emoji: r.emoji });
+    });
+    const result: Record<string, ReactionSummary[]> = {};
+    Object.entries(grouped).forEach(([logId, emojis]) => {
+      result[logId] = Object.entries(emojis).map(([emoji, v]) => ({ emoji, count: v.count, mine: v.mine }));
+    });
+    setReactionsByLog(result);
+    setReactorsByLog(reactors);
+  }, [user]);
+
+  const fetchMyFeed = useCallback(async (uid: string) => {
+    const { data } = await supabase
+      .from('logs')
+      .select('id, user_id, type, item_id, item_name, hearts_delta, calories, quantity, km, elevation_meters, duration_minutes, description, photo_url, activity_date, created_at, profiles(username, avatar_url, pig_skin, pig_bg)')
+      .eq('user_id', uid)
+      .order('created_at', { ascending: false })
+      .limit(50);
+    if (data) {
+      const rows: LogRow[] = data.map((r: any, i: number) => ({
+        id: r.id,
+        user_id: r.user_id,
+        username: r.profiles?.username ?? 'Maialino',
+        avatar_url: r.profiles?.avatar_url ?? null,
+        pig_skin: r.profiles?.pig_skin ?? 0,
+        pig_bg: r.profiles?.pig_bg ?? 0,
+        index: i,
+        type: r.type,
+        item_id: r.item_id ?? '',
+        item_name: r.item_name,
+        hearts_delta: r.hearts_delta,
+        calories: r.calories,
+        quantity: r.quantity,
+        km: r.km,
+        elevation_meters: r.elevation_meters,
+        duration_minutes: r.duration_minutes,
+        description: r.description ?? null,
+        photo_url: r.photo_url ?? null,
+        activity_date: r.activity_date ?? r.created_at?.slice(0, 10),
+        timestamp: r.created_at,
+        is_mine: true,
+      }));
+      setMyFeedLogs(rows);
+      fetchFeedReactions(rows.map((r) => r.id));
+    }
+  }, [fetchFeedReactions]);
+
+  const toggleFeedReaction = async (logId: string, emoji: string) => {
+    if (!user) return;
+    const current = reactionsByLog[logId] ?? [];
+    const myExisting = current.find((r) => r.mine);
+    const removingMine = myExisting?.emoji === emoji;
+    const withoutMine = current
+      .map((r) => r.mine ? { ...r, count: r.count - 1, mine: false } : r)
+      .filter((r) => r.count > 0);
+    if (removingMine) {
+      setReactionsByLog((prev) => ({ ...prev, [logId]: withoutMine }));
+      await supabase.from('log_reactions').delete().eq('log_id', logId).eq('user_id', user.id);
+    } else {
+      const existingTarget = withoutMine.find((r) => r.emoji === emoji);
+      const next = existingTarget
+        ? withoutMine.map((r) => r.emoji === emoji ? { ...r, count: r.count + 1, mine: true } : r)
+        : [...withoutMine, { emoji, count: 1, mine: true }];
+      setReactionsByLog((prev) => ({ ...prev, [logId]: next }));
+      await supabase.from('log_reactions').upsert({ log_id: logId, user_id: user.id, emoji }, { onConflict: 'log_id,user_id' });
+    }
+  };
+
   const refreshAll = async (uid: string) => {
     await Promise.all([
       refreshClan(),
@@ -151,7 +240,8 @@ export default function DashboardScreen() {
     if (!user) return;
     getDailyProgress(user.id).then(setDailyProgress);
     getDailyClaimedMask(user.id).then(setClaimedMask);
-  }, [user?.id]));
+    fetchMyFeed(user.id);
+  }, [user?.id, fetchMyFeed]));
 
   // Auto-aggiorna progresso missioni quando cambia il numero di log
   useEffect(() => {
@@ -444,33 +534,56 @@ export default function DashboardScreen() {
         </>
       )}
 
-      {/* 5. Log recenti — invariato */}
-      {state.logs.length > 0 && (
+      {/* 5. Il mio feed */}
+      {myFeedLogs.length > 0 && (
         <>
-          <Text style={styles.sectionTitle}>Ultimi log</Text>
-          {state.logs.slice(0, 5).map((log) => {
-            const isWorkout = log.type === 'workout';
-            return (
-              <View key={log.id} style={styles.recentCard}>
-                <Text style={styles.recentIcon}>{isWorkout ? '🏃' : '🐷'}</Text>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.recentName}>
-                    {isWorkout
-                      ? log.workoutName
-                      : `${log.drinkName}${log.quantity > 1 ? ` x${log.quantity}` : ''}`}
-                  </Text>
-                  <Text style={styles.recentTime}>
-                    {format(new Date(log.timestamp), 'HH:mm', { locale: it })}
-                  </Text>
-                </View>
-                <Text style={[styles.recentDelta, { color: isWorkout ? '#2196F3' : '#E8445A' }]}>
-                  {isWorkout ? `+${log.heartsGained}` : `-${log.heartsLost}`} ❤️
-                </Text>
-              </View>
-            );
-          })}
+          <Text style={styles.sectionTitle}>Il mio feed</Text>
+          {(showAllFeed ? myFeedLogs : myFeedLogs.slice(0, FEED_LIMIT)).map((log, index) => (
+            <LogCard
+              key={log.id}
+              item={{ ...log, index }}
+              onDelete={() => {
+                Alert.alert('Elimina log', 'Sei sicuro? La birresponsabilità verrà ripristinata.', [
+                  { text: 'Annulla', style: 'cancel' },
+                  { text: 'Elimina', style: 'destructive', onPress: () => deleteLog(log.id).then(() => user && fetchMyFeed(user.id)) },
+                ]);
+              }}
+              reactions={reactionsByLog[log.id] ?? []}
+              reactors={reactorsByLog[log.id] ?? []}
+              onToggleReaction={toggleFeedReaction}
+              onShowReactors={(logId) => setReactorsModal({ logId })}
+            />
+          ))}
+          {!showAllFeed && myFeedLogs.length > FEED_LIMIT && (
+            <TouchableOpacity style={styles.showAllBtn} onPress={() => setShowAllFeed(true)}>
+              <Text style={styles.showAllBtnText}>Mostra tutti ({myFeedLogs.length})</Text>
+            </TouchableOpacity>
+          )}
         </>
       )}
+
+      {/* Modal reattori */}
+      <Modal visible={!!reactorsModal} transparent animationType="fade" onRequestClose={() => setReactorsModal(null)}>
+        <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setReactorsModal(null)}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Chi ha reagito</Text>
+            {(reactorsByLog[reactorsModal?.logId ?? ''] ?? []).map((r) => (
+              <View key={r.userId} style={styles.modalReactorRow}>
+                <View style={styles.modalReactorAvatar}>
+                  {r.avatarUrl
+                    ? <Image source={{ uri: r.avatarUrl }} style={styles.modalReactorAvatarImg} />
+                    : <Text style={{ fontSize: 16 }}>👤</Text>}
+                </View>
+                <Text style={styles.modalReactorName}>{r.username}</Text>
+                <Text style={{ fontSize: 18 }}>{r.emoji}</Text>
+              </View>
+            ))}
+            <TouchableOpacity style={{ marginTop: 14, alignSelf: 'center', paddingHorizontal: 20, paddingVertical: 10 }} onPress={() => setReactorsModal(null)}>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: colors.textDim }}>Chiudi</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
     </ScrollView>
   );
 }
@@ -580,17 +693,31 @@ function makeStyles(colors: ThemeColors, isDark: boolean) {
     clanMemberName: { fontSize: 11, fontWeight: '600', color: colors.textDim, textAlign: 'center', maxWidth: 64, marginTop: 6 },
     clanMemberScore: { fontSize: 13, fontWeight: '800', marginTop: 1 },
 
-    // 5. Recent logs
-    recentCard: {
-      backgroundColor: colors.card, borderRadius: 12, padding: 14,
-      flexDirection: 'row', alignItems: 'center', marginBottom: 8,
-      shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
-      shadowOpacity: isDark ? 0 : 0.04, shadowRadius: 3, elevation: isDark ? 0 : 1,
+    showAllBtn: {
+      backgroundColor: colors.card, borderRadius: 12, padding: 14, marginBottom: 8,
+      alignItems: 'center', borderWidth: 1, borderColor: colors.border,
     },
-    recentIcon: { fontSize: 22, marginRight: 12 },
-    recentName: { fontSize: 14, fontWeight: '600', color: colors.text },
-    recentTime: { fontSize: 12, color: colors.textFaint, marginTop: 2 },
-    recentDelta: { fontSize: 14, fontWeight: '700' },
+    showAllBtnText: { fontSize: 14, fontWeight: '700', color: colors.textDim },
+
+    modalOverlay: {
+      flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'center', alignItems: 'center', padding: 24,
+    },
+    modalContent: {
+      backgroundColor: colors.card, borderRadius: 20, padding: 20,
+      width: '100%', maxWidth: 340,
+    },
+    modalTitle: { fontSize: 17, fontWeight: '800', color: colors.text, textAlign: 'center', marginBottom: 14 },
+    modalReactorRow: {
+      flexDirection: 'row', alignItems: 'center', gap: 10,
+      paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: colors.border,
+    },
+    modalReactorAvatar: {
+      width: 32, height: 32, borderRadius: 16, backgroundColor: colors.bgAlt,
+      alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+    },
+    modalReactorAvatarImg: { width: 32, height: 32, borderRadius: 16 },
+    modalReactorName: { flex: 1, fontSize: 14, fontWeight: '600', color: colors.text },
   });
 }
 

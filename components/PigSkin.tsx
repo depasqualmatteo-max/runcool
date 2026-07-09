@@ -12,13 +12,14 @@ interface Props {
   skinId: number;
   variant?: SkinVariant;
   size: number;
-  silhouette?: boolean; // mostra come ombra scura
+  silhouette?: boolean;
+  silhouetteColor?: string;
   opacity?: number;
 }
 
-export function PigSkin({ skinId, variant = 'base', size, silhouette, opacity }: Props) {
+export function PigSkin({ skinId, variant = 'base', size, silhouette, silhouetteColor: silhouetteColorProp, opacity }: Props) {
   const { isDark } = useTheme();
-  const silhouetteColor = isDark ? '#e8e8e8' : '#1a1a1a';
+  const silhouetteColor = silhouetteColorProp ?? (isDark ? '#e8e8e8' : '#1a1a1a');
   const skin = SHOP_SKINS.find(s => s.id === skinId) ?? SHOP_SKINS[0];
 
   // Varianti PNG per skin classiche (1-9)

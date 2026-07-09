@@ -17,6 +17,7 @@ import { PigBgView } from '@/components/PigBgView';
 import { SHOP_BGS } from '@/constants/shop';
 import { useTheme } from '@/context/ThemeContext';
 import type { ThemeColors } from '@/constants/Colors';
+import { sendPushNotification } from '@/lib/notifications';
 
 const SCREEN_W = Dimensions.get('window').width;
 
@@ -436,6 +437,69 @@ export default function ProfiloScreen() {
   const [pigSkinId, setPigSkinId] = useState(0);
   const [pigSkinVariant, setPigSkinVariant] = useState<string>('base');
   const [pigBgId, setPigBgId] = useState(0);
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [followLoading, setFollowLoading] = useState(false);
+  const [followCounts, setFollowCounts] = useState({ following: 0, followers: 0 });
+  const [followModal, setFollowModal] = useState<null | 'following' | 'followers'>(null);
+  const [followList, setFollowList] = useState<{ id: string; username: string; avatar_url: string | null }[]>([]);
+
+  useEffect(() => {
+    if (isOwner || !user || !params.userId) return;
+    supabase.from('follows')
+      .select('follower_id')
+      .eq('follower_id', user.id)
+      .eq('following_id', params.userId)
+      .maybeSingle()
+      .then(({ data }) => setIsFollowing(!!data));
+  }, [params.userId, user?.id, isOwner]);
+
+  useEffect(() => {
+    const uid = isOwner ? user?.id : params.userId;
+    if (!uid) return;
+    Promise.all([
+      supabase.from('follows').select('following_id', { count: 'exact', head: true }).eq('follower_id', uid),
+      supabase.from('follows').select('follower_id', { count: 'exact', head: true }).eq('following_id', uid),
+    ]).then(([following, followers]) => {
+      setFollowCounts({ following: following.count ?? 0, followers: followers.count ?? 0 });
+    });
+  }, [isOwner, user?.id, params.userId]);
+
+  async function openFollowModal(tab: 'following' | 'followers') {
+    const uid = isOwner ? user?.id : params.userId;
+    if (!uid) return;
+    setFollowModal(tab);
+    setFollowList([]);
+    if (tab === 'following') {
+      const { data } = await supabase
+        .from('follows')
+        .select('profiles!follows_following_id_fkey(id, username, avatar_url)')
+        .eq('follower_id', uid);
+      setFollowList((data ?? []).map((r: any) => r.profiles).filter(Boolean));
+    } else {
+      const { data } = await supabase
+        .from('follows')
+        .select('profiles!follows_follower_id_fkey(id, username, avatar_url)')
+        .eq('following_id', uid);
+      setFollowList((data ?? []).map((r: any) => r.profiles).filter(Boolean));
+    }
+  }
+
+  async function toggleFollow() {
+    if (!user || !params.userId || followLoading) return;
+    setFollowLoading(true);
+    if (isFollowing) {
+      await supabase.from('follows').delete().eq('follower_id', user.id).eq('following_id', params.userId);
+      setIsFollowing(false);
+    } else {
+      await supabase.from('follows').insert({ follower_id: user.id, following_id: params.userId });
+      setIsFollowing(true);
+      const { data: target } = await supabase.from('profiles').select('push_token, notif_pref').eq('id', params.userId).single();
+      if (target?.push_token && target.notif_pref !== 'none') {
+        await sendPushNotification(target.push_token, '👥 Nuovo follower!', `${user.username} ha iniziato a seguirti`);
+      }
+    }
+    setFollowLoading(false);
+  }
 
   const fetchStats = useCallback(async () => {
     let uid: string | undefined;
@@ -620,6 +684,11 @@ export default function ProfiloScreen() {
           )}
         </TouchableOpacity>
 
+        {isOwner && (
+          <Text style={styles.photoDisclaimer}>Non caricare foto di terzi senza consenso</Text>
+        )}
+
+
         {isOwner && editingName ? (
           <View style={styles.nameEditRow}>
             <TextInput
@@ -653,7 +722,70 @@ export default function ProfiloScreen() {
             {displayHearts >= 0 ? '❤️' : '💔'} {displayHearts > 0 ? '+' : ''}{Math.round(displayHearts)}
           </Text>
         </View>
+
+        <View style={styles.followCountsRow}>
+          <TouchableOpacity onPress={() => openFollowModal('following')} style={styles.followCountBtn}>
+            <Text style={styles.followCountNum}>{followCounts.following}</Text>
+            <Text style={styles.followCountLabel}>seguiti</Text>
+          </TouchableOpacity>
+          <View style={styles.followCountDivider} />
+          <TouchableOpacity onPress={() => openFollowModal('followers')} style={styles.followCountBtn}>
+            <Text style={styles.followCountNum}>{followCounts.followers}</Text>
+            <Text style={styles.followCountLabel}>follower</Text>
+          </TouchableOpacity>
+        </View>
       </View>
+
+      {/* ─── Modal seguiti / follower ─── */}
+      <Modal visible={!!followModal} transparent animationType="slide" onRequestClose={() => setFollowModal(null)}>
+        <TouchableOpacity style={styles.followModalOverlay} activeOpacity={1} onPress={() => setFollowModal(null)}>
+          <View style={styles.followModalContent} onStartShouldSetResponder={() => true}>
+            <View style={styles.followModalTabs}>
+              <TouchableOpacity
+                style={[styles.followModalTab, followModal === 'following' && styles.followModalTabActive]}
+                onPress={() => openFollowModal('following')}
+              >
+                <Text style={[styles.followModalTabText, followModal === 'following' && styles.followModalTabTextActive]}>
+                  👥 Seguiti ({followCounts.following})
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.followModalTab, followModal === 'followers' && styles.followModalTabActive]}
+                onPress={() => openFollowModal('followers')}
+              >
+                <Text style={[styles.followModalTabText, followModal === 'followers' && styles.followModalTabTextActive]}>
+                  ❤️ Follower ({followCounts.followers})
+                </Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView style={{ maxHeight: 400 }}>
+              {followList.length === 0 ? (
+                <Text style={styles.followModalEmpty}>Nessuno ancora</Text>
+              ) : followList.map((u) => (
+                <TouchableOpacity
+                  key={u.id}
+                  style={styles.followModalRow}
+                  onPress={() => {
+                    setFollowModal(null);
+                    if (u.id !== user?.id) router.push(`/profilo?userId=${u.id}` as any);
+                  }}
+                >
+                  <View style={styles.followModalAvatar}>
+                    {u.avatar_url
+                      ? <Image source={{ uri: u.avatar_url }} style={styles.followModalAvatarImg} />
+                      : <Text style={{ fontSize: 20 }}>👤</Text>}
+                  </View>
+                  <Text style={styles.followModalName}>{u.username}</Text>
+                  <Text style={{ fontSize: 14, color: colors.textFaint }}>›</Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity style={styles.followModalClose} onPress={() => setFollowModal(null)}>
+              <Text style={styles.followModalCloseText}>Chiudi</Text>
+            </TouchableOpacity>
+          </View>
+        </TouchableOpacity>
+      </Modal>
 
       {/* ─── Mentality (solo personale) ─── */}
       {isOwner && (
@@ -678,8 +810,17 @@ export default function ProfiloScreen() {
         </View>
       )}
 
+      {/* Segui */}
+      {!isOwner && (
+        <TouchableOpacity style={[styles.followBtn, isFollowing && styles.followBtnActive]} onPress={toggleFollow} disabled={followLoading}>
+          <Text style={[styles.followBtnText, isFollowing && styles.followBtnTextActive]}>
+            {followLoading ? '...' : isFollowing ? '✓ Segui già' : '+ Segui'}
+          </Text>
+        </TouchableOpacity>
+      )}
+
       {/* ─── Card Maialino Avatar ─── */}
-      <Text style={styles.sectionTitle}>Il tuo maialino</Text>
+      <Text style={styles.sectionTitle}>{isOwner ? 'Il tuo maialino' : 'Il suo maialino'}</Text>
       <View style={[styles.pigCard, { borderColor: pigFrame }]}>
         <PigBgView bgId={pigBgId} style={styles.pigBg}>
           <PigSkin skinId={pigSkinId} variant={pigSkinVariant as any} size={150} />
@@ -841,6 +982,17 @@ function makeStyles(colors: ThemeColors, isDark: boolean) {
       backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 50,
       alignItems: 'center', justifyContent: 'center',
     },
+    photoDisclaimer: {
+      fontSize: 11, color: colors.textFaint, textAlign: 'center',
+      marginTop: 2, marginBottom: 8, maxWidth: 200,
+    },
+    followBtn: {
+      marginTop: 10, paddingHorizontal: 24, paddingVertical: 8,
+      borderRadius: 20, borderWidth: 1.5, borderColor: '#FFD700',
+    },
+    followBtnActive: { backgroundColor: '#FFD700' },
+    followBtnText: { fontSize: 14, fontWeight: '700', color: '#FFD700' },
+    followBtnTextActive: { color: '#1a1a1a' },
     editBadge: {
       position: 'absolute', bottom: 0, right: 0,
       backgroundColor: colors.card, borderRadius: 14, width: 28, height: 28,
@@ -864,6 +1016,46 @@ function makeStyles(colors: ThemeColors, isDark: boolean) {
       shadowOpacity: isDark ? 0 : 0.08, shadowRadius: 4, elevation: isDark ? 0 : 2,
     },
     scoreChipText: { fontSize: 18, fontWeight: '800', color: '#E8445A' },
+    followCountsRow: {
+      flexDirection: 'row', alignItems: 'center', marginTop: 12,
+      backgroundColor: colors.card, borderRadius: 16,
+      paddingHorizontal: 20, paddingVertical: 8,
+      shadowColor: '#000', shadowOffset: { width: 0, height: 1 },
+      shadowOpacity: isDark ? 0 : 0.06, shadowRadius: 3, elevation: isDark ? 0 : 1,
+    },
+    followCountBtn: { alignItems: 'center', paddingHorizontal: 16 },
+    followCountNum: { fontSize: 18, fontWeight: '900', color: colors.text },
+    followCountLabel: { fontSize: 11, color: colors.textFaint, marginTop: 1 },
+    followCountDivider: { width: 1, height: 28, backgroundColor: colors.border },
+    followModalOverlay: {
+      flex: 1, backgroundColor: 'rgba(0,0,0,0.5)',
+      justifyContent: 'flex-end',
+    },
+    followModalContent: {
+      backgroundColor: colors.card, borderTopLeftRadius: 24, borderTopRightRadius: 24,
+      padding: 20, paddingBottom: 36,
+    },
+    followModalTabs: { flexDirection: 'row', marginBottom: 16, gap: 8 },
+    followModalTab: {
+      flex: 1, paddingVertical: 10, borderRadius: 12, alignItems: 'center',
+      backgroundColor: colors.bgAlt,
+    },
+    followModalTabActive: { backgroundColor: '#FFD700' },
+    followModalTabText: { fontSize: 13, fontWeight: '700', color: colors.textDim },
+    followModalTabTextActive: { color: '#1a1a1a' },
+    followModalRow: {
+      flexDirection: 'row', alignItems: 'center', paddingVertical: 12,
+      borderBottomWidth: 1, borderBottomColor: colors.border, gap: 12,
+    },
+    followModalAvatar: {
+      width: 40, height: 40, borderRadius: 20, backgroundColor: colors.bgAlt,
+      alignItems: 'center', justifyContent: 'center', overflow: 'hidden',
+    },
+    followModalAvatarImg: { width: 40, height: 40, borderRadius: 20 },
+    followModalName: { flex: 1, fontSize: 15, fontWeight: '700', color: colors.text },
+    followModalEmpty: { textAlign: 'center', color: colors.textFaint, paddingVertical: 32, fontSize: 14 },
+    followModalClose: { marginTop: 16, alignSelf: 'center', paddingHorizontal: 24, paddingVertical: 10 },
+    followModalCloseText: { fontSize: 14, fontWeight: '600', color: colors.textDim },
 
     sectionTitle: {
       fontSize: 14, fontWeight: '700', color: colors.text,

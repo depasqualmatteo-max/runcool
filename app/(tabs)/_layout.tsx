@@ -51,6 +51,8 @@ function ProfileButton() {
   const [tokens, setTokens] = useState<number | null>(null);
   const [injuryMode, setInjuryMode] = useState(false);
   const [injurySaving, setInjurySaving] = useState(false);
+  const [privateAlcohol, setPrivateAlcohol] = useState(false);
+  const [alcoholSaving, setAlcoholSaving] = useState(false);
 
   function cycleTheme() {
     const idx = THEME_CYCLE.findIndex(t => t.mode === mode);
@@ -60,16 +62,25 @@ function ProfileButton() {
 
   useEffect(() => {
     if (!user) return;
-    supabase.from('profiles').select('tokens, injury_mode').eq('id', user.id).single()
-      .then(({ data }) => { setTokens(data?.tokens ?? 0); setInjuryMode(data?.injury_mode ?? false); });
+    supabase.from('profiles').select('tokens, injury_mode, private_alcohol').eq('id', user.id).single()
+      .then(({ data }) => { setTokens(data?.tokens ?? 0); setInjuryMode(data?.injury_mode ?? false); setPrivateAlcohol(data?.private_alcohol ?? false); });
   }, [user?.id]);
 
   useEffect(() => {
     if (menuOpen && user) {
-      supabase.from('profiles').select('tokens, injury_mode').eq('id', user.id).single()
-        .then(({ data }) => { setTokens(data?.tokens ?? 0); setInjuryMode(data?.injury_mode ?? false); });
+      supabase.from('profiles').select('tokens, injury_mode, private_alcohol').eq('id', user.id).single()
+        .then(({ data }) => { setTokens(data?.tokens ?? 0); setInjuryMode(data?.injury_mode ?? false); setPrivateAlcohol(data?.private_alcohol ?? false); });
     }
   }, [menuOpen]);
+
+  async function togglePrivateAlcohol() {
+    if (!user || alcoholSaving) return;
+    setAlcoholSaving(true);
+    const next = !privateAlcohol;
+    await supabase.from('profiles').update({ private_alcohol: next }).eq('id', user.id);
+    setPrivateAlcohol(next);
+    setAlcoholSaving(false);
+  }
 
   async function toggleInjury() {
     if (!user || injurySaving) return;
@@ -130,6 +141,18 @@ function ProfileButton() {
               </View>
               <View style={[menuStyles.injuryToggle, injuryMode && menuStyles.injuryToggleOn]}>
                 <View style={[menuStyles.injuryKnob, injuryMode && menuStyles.injuryKnobOn]} />
+              </View>
+            </TouchableOpacity>
+
+            {/* Alcol privato */}
+            <TouchableOpacity style={menuStyles.injuryRow} onPress={togglePrivateAlcohol} disabled={alcoholSaving}>
+              <Text style={menuStyles.injuryEmoji}>🔒</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={menuStyles.injuryLabel}>Alcol privato</Text>
+                <Text style={menuStyles.injuryDesc}>{privateAlcohol ? 'Le tue bevute non appaiono nel feed' : 'Le tue bevute sono visibili nel feed'}</Text>
+              </View>
+              <View style={[menuStyles.injuryToggle, privateAlcohol && menuStyles.injuryToggleOn]}>
+                <View style={[menuStyles.injuryKnob, privateAlcohol && menuStyles.injuryKnobOn]} />
               </View>
             </TouchableOpacity>
 

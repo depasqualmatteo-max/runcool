@@ -129,6 +129,8 @@ export default function PostLogModal({ visible, logId, onDone }: Props) {
             )}
           </TouchableOpacity>
 
+          <Text style={styles.photoDisclaimer}>Non caricare foto di terzi senza il loro consenso</Text>
+
           {photoUri && (
             <TouchableOpacity onPress={() => setPhotoUri(null)}>
               <Text style={styles.removePhoto}>Rimuovi foto</Text>
@@ -177,6 +179,7 @@ const styles = StyleSheet.create({
   photoBtnText: { fontSize: 16, color: '#aaa', fontWeight: '600' },
   photoPreview: { width: '100%', height: '100%', resizeMode: 'cover' },
   removePhoto: { textAlign: 'center', color: '#E8445A', fontWeight: '700', fontSize: 13 },
+  photoDisclaimer: { fontSize: 11, color: '#999', textAlign: 'center', marginTop: 4 },
 
   btns: { flexDirection: 'row', gap: 12, marginTop: 4 },
   skipBtn: {

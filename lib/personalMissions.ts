@@ -87,7 +87,7 @@ export const SEQ_MISSIONS: SeqMission[] = [
   { id: 68,  type: 'mentality',           label: 'Prendi 20 Mentality consecutivi',               target: 20,   targetLabel: '20 consecutivi' },
   { id: 69,  type: 'no_drink',            label: 'Non bere per 10 giorni',                        target: 10,   targetLabel: '10 giorni' },
   { id: 70,  type: 'corsa_singola',       label: 'Percorri 18 km in una corsa',                   target: 18,   targetLabel: '18 km' },
-  { id: 71,  type: 'km_settimanali',      label: 'Percorri 40 km in una settimana',               target: 40,   targetLabel: '40 km' },
+  { id: 71,  type: 'km_settimanali',      label: 'Percorri 35 km in una settimana',               target: 35,   targetLabel: '35 km' },
   { id: 72,  type: 'camminata_dislivello',label: 'Fai una camminata con 1000 m D+',               target: 1000, targetLabel: '1000 m D+' },
   { id: 73,  type: 'classifica_mensile',  label: 'Arriva nella Top 5% della classifica mensile',  target: 5,    targetLabel: 'Top 5%' },
   { id: 74,  type: 'corsa_singola',       label: 'Percorri 21 km (mezza maratona)',                target: 21,   targetLabel: '21 km' },
@@ -97,14 +97,14 @@ export const SEQ_MISSIONS: SeqMission[] = [
   { id: 78,  type: 'missioni_giornaliere',label: 'Completa 25 missioni giornaliere',              target: 25,   targetLabel: '25 missioni' },
   { id: 79,  type: 'missioni_tandem',     label: 'Completa 8 missioni tandem',                    target: 8,    targetLabel: '8 tandem' },
   { id: 80,  type: 'tempo_attivita',      label: 'Fai 6 ore di attività',                         target: 360,  targetLabel: '360 min' },
-  { id: 81,  type: 'km_settimanali',      label: 'Percorri 50 km in una settimana',               target: 50,   targetLabel: '50 km' },
+  { id: 81,  type: 'km_settimanali',      label: 'Percorri 45 km in una settimana',               target: 45,   targetLabel: '45 km' },
   { id: 82,  type: 'camminata_dislivello',label: 'Fai una camminata con 1300 m D+',               target: 1300, targetLabel: '1300 m D+' },
   { id: 83,  type: 'missioni_clan',       label: 'Completa 5 missioni clan',                      target: 5,    targetLabel: '5 clan' },
   { id: 84,  type: 'classifica_mensile',  label: 'Arriva nella Top 3% della classifica mensile',  target: 3,    targetLabel: 'Top 3%' },
   { id: 85,  type: 'corsa_singola',       label: 'Percorri 25 km in una corsa',                   target: 25,   targetLabel: '25 km' },
-  { id: 86,  type: 'mentality',           label: 'Prendi 50 Mentality consecutivi',               target: 50,   targetLabel: '50 consecutivi' },
+  { id: 86,  type: 'mentality',           label: 'Prendi 45 Mentality consecutivi',               target: 45,   targetLabel: '45 consecutivi' },
   { id: 87,  type: 'camminata_dislivello',label: 'Fai una camminata con 1500 m D+',               target: 1500, targetLabel: '1500 m D+' },
-  { id: 88,  type: 'km_settimanali',      label: 'Percorri 70 km in una settimana',               target: 70,   targetLabel: '70 km' },
+  { id: 88,  type: 'km_settimanali',      label: 'Percorri 55 km in una settimana',               target: 55,   targetLabel: '55 km' },
   { id: 89,  type: 'no_drink',            label: 'Non bere per 21 giorni',                        target: 21,   targetLabel: '21 giorni' },
   { id: 90,  type: 'camminata',           label: 'Fai una camminata di 30 km',                    target: 30,   targetLabel: '30 km' },
   { id: 91,  type: 'tempo_attivita',      label: 'Fai 10 ore di attività',                        target: 600,  targetLabel: '600 min' },
@@ -112,10 +112,10 @@ export const SEQ_MISSIONS: SeqMission[] = [
   { id: 93,  type: 'corsa_singola',       label: 'Percorri 30 km in una corsa',                   target: 30,   targetLabel: '30 km' },
   { id: 94,  type: 'classifica_mensile',  label: 'Arriva nella Top 2% della classifica mensile',  target: 2,    targetLabel: 'Top 2%' },
   { id: 95,  type: 'missioni_tandem',     label: 'Completa 12 missioni tandem',                   target: 12,   targetLabel: '12 tandem' },
-  { id: 96,  type: 'km_settimanali',      label: 'Corri 100 km in una settimana',                 target: 100,  targetLabel: '100 km' },
+  { id: 96,  type: 'km_settimanali',      label: 'Percorri 70 km in una settimana',               target: 70,   targetLabel: '70 km' },
   { id: 97,  type: 'camminata_dislivello',label: 'Fai una camminata con 2000 m D+',               target: 2000, targetLabel: '2000 m D+' },
   { id: 98,  type: 'no_drink',            label: 'Non bere per 30 giorni',                        target: 30,   targetLabel: '30 giorni' },
-  { id: 99,  type: 'mentality',           label: 'Prendi 100 Mentality consecutivi',              target: 100,  targetLabel: '100 consecutivi' },
+  { id: 99,  type: 'mentality',           label: 'Prendi 60 Mentality consecutivi',               target: 60,   targetLabel: '60 consecutivi' },
   { id: 100, type: 'classifica_mensile',  label: 'Arriva nella Top 1% della classifica mensile',  target: 1,    targetLabel: 'Top 1%' },
 ];
 
@@ -251,15 +251,18 @@ export async function calcSeqProgress(mission: SeqMission, userId: string, missi
         return { value: best, pct: Math.min(best / mission.target, 1), displayValue: `${Number(best).toFixed(1)} / ${mission.target} km`, completed: best >= mission.target };
       }
       case 'tempo_attivita': {
-        // Migliore sessione singola con durata >= target (escludi corsa che conta sui km)
+        // Somma cumulativa minuti di attività (escludi corsa/camminata/mentality)
         const { data } = await supabase.from('logs').select('duration_minutes')
           .eq('user_id', userId).eq('type', 'workout')
           .neq('item_id', 'corsa').neq('item_id', 'camminata').neq('item_id', 'mentality')
           .gte('activity_date', since.slice(0, 10))
-          .not('duration_minutes', 'is', null)
-          .order('duration_minutes', { ascending: false }).limit(1);
-        const best = data?.[0]?.duration_minutes ?? 0;
-        return { value: best, pct: Math.min(best / mission.target, 1), displayValue: `${best} / ${mission.target} min`, completed: best >= mission.target };
+          .not('duration_minutes', 'is', null);
+        const total = (data ?? []).reduce((s, l) => s + (l.duration_minutes ?? 0), 0);
+        const h = Math.floor(total / 60), m = total % 60;
+        const dispVal = h > 0 ? `${h}h${m > 0 ? ` ${m}min` : ''}` : `${total} min`;
+        const tH = Math.floor(mission.target / 60), tM = mission.target % 60;
+        const dispTarget = tH > 0 ? `${tH}h${tM > 0 ? ` ${tM}min` : ''}` : `${mission.target} min`;
+        return { value: total, pct: Math.min(total / mission.target, 1), displayValue: `${dispVal} / ${dispTarget}`, completed: total >= mission.target };
       }
       case 'km_settimanali': {
         const { data } = await supabase.from('logs').select('km, activity_date, created_at')
@@ -273,7 +276,11 @@ export async function calcSeqProgress(mission: SeqMission, userId: string, missi
           weeks[w] = (weeks[w] ?? 0) + (l.km ?? 0);
         }
         const best = Math.max(...Object.values(weeks));
-        return { value: best, pct: Math.min(best / mission.target, 1), displayValue: `${best.toFixed(1)} / ${mission.target} km`, completed: best >= mission.target };
+        // Mostra km della settimana corrente come progresso, ma completa se una settimana ha raggiunto il target
+        const thisWeekKey = format(startOfWeek(new Date(), { weekStartsOn: 1 }), 'yyyy-ww');
+        const thisWeek = weeks[thisWeekKey] ?? 0;
+        const display = best >= mission.target ? best : thisWeek;
+        return { value: display, pct: Math.min(display / mission.target, 1), displayValue: `${display.toFixed(1)} / ${mission.target} km (questa sett.)`, completed: best >= mission.target };
       }
       case 'no_drink': {
         const { data: drinkLogs } = await supabase.from('logs').select('activity_date, created_at')
@@ -313,13 +320,41 @@ export async function calcSeqProgress(mission: SeqMission, userId: string, missi
         return { value: best, pct: Math.min(best / mission.target, 1), displayValue: `${best} / ${mission.target} m D+`, completed: best >= mission.target };
       }
       case 'missioni_giornaliere': {
-        const { data: profile } = await supabase.from('profiles').select('daily_missions_done').eq('id', userId).single();
-        const v = profile?.daily_missions_done ?? 0;
+        const { data: profile } = await supabase.from('profiles').select('daily_missions_done, daily_missions_baseline').eq('id', userId).single();
+        const total = profile?.daily_missions_done ?? 0;
+        const baseline = profile?.daily_missions_baseline ?? 0;
+        const v = Math.max(0, total - baseline);
         return { value: v, pct: Math.min(v / mission.target, 1), displayValue: `${v} / ${mission.target}`, completed: v >= mission.target };
       }
-      case 'missioni_tandem':
-      case 'missioni_clan':
-      case 'classifica_mensile':
+      case 'missioni_tandem': {
+        const { data: profile } = await supabase.from('profiles').select('tandem_missions_done').eq('id', userId).single();
+        const v = profile?.tandem_missions_done ?? 0;
+        return { value: v, pct: Math.min(v / mission.target, 1), displayValue: `${v} / ${mission.target}`, completed: v >= mission.target };
+      }
+      case 'missioni_clan': {
+        const { data: profile } = await supabase.from('profiles').select('clan_missions_done').eq('id', userId).single();
+        const v = profile?.clan_missions_done ?? 0;
+        return { value: v, pct: Math.min(v / mission.target, 1), displayValue: `${v} / ${mission.target}`, completed: v >= mission.target };
+      }
+      case 'classifica_mensile': {
+        // Usa best_monthly_rank (aggiornato a fine mese insieme a rank_counts)
+        const [{ data: me }, { count: totalUsers }] = await Promise.all([
+          supabase.from('profiles').select('best_monthly_rank').eq('id', userId).single(),
+          supabase.from('profiles').select('*', { count: 'exact', head: true }),
+        ]);
+        const bestRank = me?.best_monthly_rank ?? null;
+        if (bestRank === null || !totalUsers) {
+          return { value: 0, pct: 0, displayValue: `Nessuna classifica mensile ancora`, completed: false };
+        }
+        const bestPct = Math.ceil((bestRank / totalUsers) * 100);
+        const completed = bestPct <= mission.target;
+        return {
+          value: bestPct,
+          pct: completed ? 1 : Math.min(mission.target / bestPct, 1),
+          displayValue: `Miglior mese: Top ${bestPct}% (serve Top ${mission.target}%)`,
+          completed,
+        };
+      }
       default:
         return { value: 0, pct: 0, displayValue: `— / ${mission.targetLabel}`, completed: false };
     }
@@ -331,10 +366,16 @@ export async function calcSeqProgress(mission: SeqMission, userId: string, missi
 // Incrementa missione sequenziale completata
 export async function advanceSeqMission(userId: string, currentId: number) {
   if (currentId >= 100) return;
-  await supabase.from('profiles').update({
+  const nextMission = SEQ_MISSIONS.find(m => m.id === currentId + 1);
+  const update: Record<string, any> = {
     current_mission: currentId + 1,
     mission_started_at: new Date().toISOString(),
-  }).eq('id', userId);
+  };
+  if (nextMission?.type === 'missioni_giornaliere') {
+    const { data } = await supabase.from('profiles').select('daily_missions_done').eq('id', userId).single();
+    update.daily_missions_baseline = data?.daily_missions_done ?? 0;
+  }
+  await supabase.from('profiles').update(update).eq('id', userId);
 }
 
 // Incrementa contatore missioni giornaliere completate

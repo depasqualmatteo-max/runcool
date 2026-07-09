@@ -3,6 +3,7 @@ import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   Alert, ActivityIndicator, RefreshControl, Image, Modal,
 } from 'react-native';
+import { useRouter } from 'expo-router';
 import { useApp } from '@/context/AppContext';
 import { useAuth } from '@/context/AuthContext';
 import { supabase } from '@/lib/supabase';
@@ -13,6 +14,8 @@ import { PigBgView } from '@/components/PigBgView';
 import { useTheme } from '@/context/ThemeContext';
 import type { ThemeColors } from '@/constants/Colors';
 import { sendPushNotification } from '@/lib/notifications';
+
+const ADMIN_USER_ID = '5dc65840-d19b-4051-a7b8-564fd0f368db';
 
 const REACTION_EMOJIS = ['❤️', '🔥', '😂', '💪', '🐷'];
 
@@ -123,8 +126,8 @@ function ReactionBar({
 
 // ─── Card unificata ──────────────────────────────────────────────────────────
 
-function LogCard({ item, onDelete, reactions, reactors, onToggleReaction, onShowReactors }: {
-  item: LogRow; onDelete?: () => void; reactions: ReactionSummary[]; reactors: Reactor[];
+function LogCard({ item, onDelete, onReport, onPressUser, reactions, reactors, onToggleReaction, onShowReactors }: {
+  item: LogRow; onDelete?: () => void; onReport?: () => void; onPressUser?: () => void; reactions: ReactionSummary[]; reactors: Reactor[];
   onToggleReaction: (logId: string, emoji: string) => void; onShowReactors: (logId: string) => void;
 }) {
   const { colors, isDark } = useTheme();
@@ -167,13 +170,13 @@ function LogCard({ item, onDelete, reactions, reactors, onToggleReaction, onShow
         )}
         {/* Header */}
         <View style={styles.rowBetween}>
-          <View style={styles.row}>
+          <TouchableOpacity style={styles.row} onPress={onPressUser} activeOpacity={onPressUser ? 0.7 : 1}>
             <Avatar avatarUrl={item.avatar_url} skinId={item.pig_skin} bgId={item.pig_bg} />
             <View style={{ marginLeft: 10 }}>
               <Text style={styles.username}>{item.username}</Text>
               <Text style={styles.time}>{timeStr}</Text>
             </View>
-          </View>
+          </TouchableOpacity>
           <View style={styles.row}>
             {!isMentality && (
               <View style={[styles.heartsBadge, { backgroundColor: isWorkout ? (isDark ? '#16273a' : '#E3F2FD') : (isDark ? '#301818' : '#FFF0F0') }]}>
@@ -200,7 +203,14 @@ function LogCard({ item, onDelete, reactions, reactors, onToggleReaction, onShow
         </View>
 
         {item.photo_url ? (
-          <Image source={{ uri: item.photo_url }} style={styles.photo} />
+          <View>
+            <Image source={{ uri: item.photo_url }} style={styles.photo} />
+            {onReport && (
+              <TouchableOpacity style={styles.reportBtn} onPress={onReport}>
+                <Text style={styles.reportBtnText}>🚩</Text>
+              </TouchableOpacity>
+            )}
+          </View>
         ) : null}
         {item.description ? (
           <Text style={styles.description}>{item.description}</Text>
@@ -232,16 +242,20 @@ function LogCard({ item, onDelete, reactions, reactors, onToggleReaction, onShow
   // ── Card compatta ─────────────────────────────────────────────
   return (
     <View style={[styles.cardCompact, { backgroundColor: cardBg }]}>
-      <Avatar avatarUrl={item.avatar_url} skinId={item.pig_skin} bgId={item.pig_bg} />
+      <TouchableOpacity onPress={onPressUser} activeOpacity={onPressUser ? 0.7 : 1}>
+        <Avatar avatarUrl={item.avatar_url} skinId={item.pig_skin} bgId={item.pig_bg} />
+      </TouchableOpacity>
 
       {/* Colonna centrale */}
       <View style={{ flex: 1, marginLeft: 10 }}>
-        <Text style={styles.username} numberOfLines={1}>{item.username}</Text>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2, gap: 4 }}>
-          <Text style={{ fontSize: 12 }}>{activityEmoji}</Text>
-          <Text style={styles.compactName} numberOfLines={1}>{item.item_name}</Text>
-        </View>
-        {subtitle ? <Text style={styles.compactSub} numberOfLines={1}>{subtitle}</Text> : null}
+        <TouchableOpacity onPress={onPressUser} activeOpacity={onPressUser ? 0.7 : 1}>
+          <Text style={styles.username} numberOfLines={1}>{item.username}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2, gap: 4 }}>
+            <Text style={{ fontSize: 12 }}>{activityEmoji}</Text>
+            <Text style={styles.compactName} numberOfLines={1}>{item.item_name}</Text>
+          </View>
+          {subtitle ? <Text style={styles.compactSub} numberOfLines={1}>{subtitle}</Text> : null}
+        </TouchableOpacity>
         <ReactionBar logId={item.id} reactions={reactions} reactors={reactors} onToggle={onToggleReaction} onShowReactors={onShowReactors} />
       </View>
 
@@ -273,8 +287,9 @@ export default function HistoryScreen() {
   const { user } = useAuth();
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => makeStyles(colors, isDark), [colors, isDark]);
-  const [tab, setTab] = useState<'mine' | 'feed'>('mine');
-  const [myLogs, setMyLogs] = useState<LogRow[]>([]);
+  const router = useRouter();
+  const [tab, setTab] = useState<'following' | 'feed'>('following');
+  const [followingLogs, setFollowingLogs] = useState<LogRow[]>([]);
   const [feed, setFeed] = useState<LogRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
@@ -312,7 +327,7 @@ export default function HistoryScreen() {
     item_id, item_name, hearts_delta, calories,
     quantity, km, elevation_meters, duration_minutes,
     description, photo_url, activity_date, created_at,
-    profiles(username, avatar_url, pig_skin, pig_bg)
+    profiles(username, avatar_url, pig_skin, pig_bg, private_alcohol)
   `;
 
   const fetchReactions = useCallback(async (logIds: string[]) => {
@@ -344,19 +359,27 @@ export default function HistoryScreen() {
     setReactorsByLog(reactors);
   }, [user]);
 
-  const fetchMine = useCallback(async () => {
+  const fetchFollowing = useCallback(async () => {
     if (!user) return;
     setLoading(true);
     try {
+      const { data: follows } = await supabase
+        .from('follows')
+        .select('following_id')
+        .eq('follower_id', user.id);
+      const ids = (follows ?? []).map((f: any) => f.following_id);
+      if (ids.length === 0) { setFollowingLogs([]); setLoading(false); setRefreshing(false); return; }
       const { data } = await supabase
         .from('logs')
         .select(SELECT)
-        .eq('user_id', user.id)
+        .in('user_id', ids)
         .order('created_at', { ascending: false })
         .limit(80);
       if (data) {
-        const rows = data.map((r) => mapRow(r, user.id));
-        setMyLogs(rows);
+        const rows = data
+          .filter((r) => !(r.type === 'drink' && r.profiles?.private_alcohol))
+          .map((r) => mapRow(r, user.id));
+        setFollowingLogs(rows);
         fetchReactions(rows.map((r) => r.id));
       }
     } catch (e) { console.error(e); }
@@ -373,7 +396,9 @@ export default function HistoryScreen() {
         .order('created_at', { ascending: false })
         .limit(60);
       if (data) {
-        const rows = data.map((r) => mapRow(r, user.id));
+        const rows = data
+          .filter((r) => !(r.type === 'drink' && r.profiles?.private_alcohol && r.user_id !== user.id))
+          .map((r) => mapRow(r, user.id));
         setFeed(rows);
         fetchReactions(rows.map((r) => r.id));
       }
@@ -381,23 +406,23 @@ export default function HistoryScreen() {
     finally { setLoading(false); setRefreshing(false); }
   }, [user, fetchReactions]);
 
-  useEffect(() => { if (tab === 'mine') fetchMine(); }, [tab, fetchMine]);
+  useEffect(() => { if (tab === 'following') fetchFollowing(); }, [tab, fetchFollowing]);
   useEffect(() => { if (tab === 'feed') fetchFeed(); }, [tab, fetchFeed]);
 
   // Realtime: INSERT e UPDATE su logs, e su log_reactions
   useEffect(() => {
-    const refresh = tab === 'mine' ? fetchMine : fetchFeed;
+    const refresh = tab === 'following' ? fetchFollowing : fetchFeed;
     const channel = supabase
       .channel(`history-realtime-${tab}`)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'logs' }, refresh)
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'logs' }, refresh)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'log_reactions' }, () => {
-        const ids = (tab === 'mine' ? myLogs : feed).map((r) => r.id);
+        const ids = (tab === 'following' ? followingLogs : feed).map((r) => r.id);
         fetchReactions(ids);
       })
       .subscribe();
     return () => { supabase.removeChannel(channel); };
-  }, [tab, fetchMine, fetchFeed, fetchReactions, myLogs, feed]);
+  }, [tab, fetchFollowing, fetchFeed, fetchReactions, followingLogs, feed]);
 
   async function toggleReaction(logId: string, emoji: string) {
     if (!user) return;
@@ -429,7 +454,7 @@ export default function HistoryScreen() {
 
   async function notifyReaction(logId: string, emoji: string) {
     if (!user) return;
-    const log = [...myLogs, ...feed].find((l) => l.id === logId);
+    const log = [...followingLogs, ...feed].find((l) => l.id === logId);
     if (!log || log.user_id === user.id) return;
     const { data: owner } = await supabase
       .from('profiles')
@@ -444,10 +469,27 @@ export default function HistoryScreen() {
     );
   }
 
+  async function reportLog(item: LogRow) {
+    if (!user) return;
+    Alert.alert('Segnala foto', 'Vuoi segnalare questa foto come inappropriata?', [
+      { text: 'Annulla', style: 'cancel' },
+      {
+        text: 'Segnala', style: 'destructive', onPress: async () => {
+          await supabase.from('reports').insert({ reporter_id: user.id, log_id: item.id, reason: 'foto inappropriata' });
+          const { data: admin } = await supabase.from('profiles').select('push_token').eq('id', ADMIN_USER_ID).single();
+          if (admin?.push_token) {
+            await sendPushNotification(admin.push_token, '🚩 Foto segnalata', `${user.username} ha segnalato una foto di ${item.username}`);
+          }
+          Alert.alert('Segnalazione inviata', 'Grazie, verificheremo al più presto.');
+        }
+      },
+    ]);
+  }
+
   function confirmDelete(item: LogRow) {
     Alert.alert('Elimina log', 'Sei sicuro? La birresponsabilità verrà ripristinata.', [
       { text: 'Annulla', style: 'cancel' },
-      { text: 'Elimina', style: 'destructive', onPress: () => deleteLog(item.id).then(() => fetchMine()) },
+      { text: 'Elimina', style: 'destructive', onPress: () => deleteLog(item.id).then(() => tab === 'following' ? fetchFollowing() : fetchFeed()) },
     ]);
   }
 
@@ -462,7 +504,7 @@ export default function HistoryScreen() {
     return groups;
   };
 
-  const activeData = tab === 'mine' ? myLogs : feed;
+  const activeData = tab === 'following' ? followingLogs : feed;
   const flatData = groupByDate(activeData).flatMap((g) => [
     { _type: 'header', date: g.date, id: `h-${g.date}` } as any,
     ...g.items,
@@ -473,10 +515,10 @@ export default function HistoryScreen() {
       {/* Toggle */}
       <View style={styles.tabBar}>
         <TouchableOpacity
-          style={[styles.tabBtn, tab === 'mine' && styles.tabBtnActive]}
-          onPress={() => setTab('mine')}
+          style={[styles.tabBtn, tab === 'following' && styles.tabBtnActive]}
+          onPress={() => setTab('following')}
         >
-          <Text style={[styles.tabLabel, tab === 'mine' && styles.tabLabelActive]}>📋 Il mio</Text>
+          <Text style={[styles.tabLabel, tab === 'following' && styles.tabLabelActive]}>👥 Following</Text>
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.tabBtn, tab === 'feed' && styles.tabBtnActive]}
@@ -493,12 +535,12 @@ export default function HistoryScreen() {
         </View>
       ) : activeData.length === 0 ? (
         <View style={styles.empty}>
-          <Text style={styles.emptyIcon}>{tab === 'mine' ? '📋' : '🐷'}</Text>
+          <Text style={styles.emptyIcon}>{tab === 'following' ? '👥' : '🐷'}</Text>
           <Text style={styles.emptyTitle}>
-            {tab === 'mine' ? 'Nessun log ancora' : 'Nessuna attività ancora'}
+            {tab === 'following' ? 'Non segui ancora nessuno' : 'Nessuna attività ancora'}
           </Text>
           <Text style={styles.emptySub}>
-            {tab === 'mine' ? 'Inizia a loggare drink e sport!' : 'Sii il primo a correre o bere!'}
+            {tab === 'following' ? 'Vai sul profilo di un maialino e inizia a seguirlo!' : 'Sii il primo a correre o bere!'}
           </Text>
         </View>
       ) : (
@@ -509,7 +551,7 @@ export default function HistoryScreen() {
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
-              onRefresh={() => { setRefreshing(true); tab === 'mine' ? fetchMine() : fetchFeed(); }}
+              onRefresh={() => { setRefreshing(true); tab === 'following' ? fetchFollowing() : fetchFeed(); }}
               tintColor="#FFD700"
             />
           }
@@ -521,6 +563,8 @@ export default function HistoryScreen() {
               <LogCard
                 item={{ ...item, index }}
                 onDelete={item.is_mine ? () => confirmDelete(item) : undefined}
+                onReport={!item.is_mine && item.photo_url ? () => reportLog(item) : undefined}
+                onPressUser={!item.is_mine ? () => router.push(`/profilo?userId=${item.user_id}` as any) : undefined}
                 reactions={reactionsByLog[item.id] ?? []}
                 reactors={reactorsByLog[item.id] ?? []}
                 onToggleReaction={toggleReaction}
@@ -640,6 +684,8 @@ function makeStyles(colors: ThemeColors, isDark: boolean) {
     heartsBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 20 },
     heartsBadgeText: { fontSize: 13, fontWeight: '800' },
     photo: { width: '100%', height: 200, borderRadius: 12, marginTop: 10, resizeMode: 'cover' },
+    reportBtn: { alignSelf: 'flex-end', marginTop: 4, paddingHorizontal: 8, paddingVertical: 3 },
+    reportBtnText: { fontSize: 11, color: colors.textFaint },
     description: { fontSize: 14, color: colors.text, marginTop: 10, lineHeight: 20 },
 
     // Utility

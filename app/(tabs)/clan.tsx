@@ -362,8 +362,15 @@ export default function ClanScreen() {
     setRefreshing(false);
   }
 
-  async function pickClanImage() {
+  function pickClanImage() {
     if (!isOwner) return;
+    Alert.alert('Foto clan', 'Non caricare foto di terzi senza il loro consenso.', [
+      { text: 'Annulla', style: 'cancel' },
+      { text: 'Continua', onPress: () => doPick() },
+    ]);
+  }
+
+  async function doPick() {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (status !== 'granted') { Alert.alert('Permesso negato', 'Serve accesso alla galleria'); return; }
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -779,6 +786,10 @@ function makeStyles(colors: ThemeColors, isDark: boolean) {
     clanBannerEditBadge: {
       position: 'absolute', top: 10, right: 10,
       backgroundColor: 'rgba(0,0,0,0.45)', borderRadius: 12, paddingHorizontal: 8, paddingVertical: 4,
+    },
+    photoDisclaimer: {
+      position: 'absolute', bottom: 6, left: 0, right: 0,
+      fontSize: 9, color: 'rgba(255,255,255,0.6)', textAlign: 'center',
     },
     clanScoreSection: { alignItems: 'center', paddingVertical: 16, paddingBottom: 8 },
     clanName: { fontSize: 24, fontWeight: '900', color: colors.text, textAlign: 'center' },
